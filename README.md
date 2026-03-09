@@ -15,7 +15,7 @@ The universal set makes this possible in a principled way. CantorDB maintains a 
 
 ## Building
 
-This can be added to any project via including the files within your project. It uses C++ 17 but is otherwise completely dependency free. I have compiled it both on Windows 10 and Omarchy.
+This can be added to any project via including the files within your project. It uses C++ 17 but is otherwise completely dependency free. As it is not header only, it does require linking. I have compiled it both on Windows 10 and Omarchy.
 
 ## Basic Usage
 
@@ -402,3 +402,11 @@ Set* a      = db->set_intersection("Period4", "Ferromagnetic");
 ## AI policy
 
 This database is a hobby project of mine due to my love for set theory. As such, I use AI to automate parts that I do not like such as writing tests or pushing commits. As such, while Claude is a co-author, and did assist in catching my silly mistakes, I handwrote this code and have no plans of using AI as anything but a glorified find and replace or writing tests. I certainly am not vibecoding it.
+
+## Roadmap
+
+My primary goal at this point is to design and impliment a SeQL (Set Query Language) for ease of using within a commandline environment. In addition, I would like to create R and Python bindings to enable its use for data science. I do have a few pie in the sky ideas such as allowing calculated sets to fully encapsulate the full set theory model which I may impliment later.
+
+## Licence
+
+This project uses an MIT licence.

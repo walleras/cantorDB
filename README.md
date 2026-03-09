@@ -2,8 +2,8 @@
 
 ## Introduction
 
-CantorDB is a (for now) in-memory, set-theoretic database written in C++. Rathher that organizing data round tables, rows, or graph edges, it takes its conceptual ground from naiv set theory.
-The core primitiveis the set which is a named node that can contain other sets within it, belong to other sets and have key value properties. Every set created is automatically part of the universal set on creation, giving you a global namespace for enumeration and complement operations.
+CantorDB is a (for now) in-memory, set-theoretic database written in C++. Rather that organizing data round tables, rows, or graph edges, it takes its conceptual ground from naive set theory.
+The core primitive is the set which is a named node that can contain other sets within it, belong to other sets and have key value properties. Every set created is automatically part of the universal set on creation, giving you a global namespace for enumeration and complement operations.
 The database is named in honor of George Cantor, whose insight was that sets was not just a part of the mathematical world but rather the fabric upon which it was based. CantorDB is making the same proposition as it relates to databases.
 
 ## Conceptual foundation
@@ -401,12 +401,12 @@ Set* a      = db->set_intersection("Period4", "Ferromagnetic");
 
 ## AI policy
 
-This database is a hobby project of mine due to my love for set theory. As such, I use AI to automate parts that I do not like such as writing tests or pushing commits. As such, while Claude is a co-author, and did assist in catching my silly mistakes, I handwrote this code and have no plans of using AI as anything but a glorified find and replace or writing tests. I certainly am not vibecoding it.
+This database is a hobby project of mine due to my love for set theory. As such, I use AI to automate parts that I do not like such as writing tests or pushing commits. As such, while Claude is a co-author, and did assist in catching my silly mistakes, I handwrote this code and use it for tests, generating documentations, find and repalce, and commit messages. I certainly am not vibecoding it.
 
 ## Roadmap
 
-My primary goal at this point is to design and impliment a SeQL (Set Query Language) for ease of using within a commandline environment. In addition, I would like to create R and Python bindings to enable its use for data science. I do have a few pie in the sky ideas such as allowing calculated sets to fully encapsulate the full set theory model which I may impliment later.
+My primary goal at this point is to design and implement a SeQL (Set Query Language) for ease of using within a commandline environment. In addition, I would like to create R and Python bindings to enable its use for data science. I do have a few pie in the sky ideas such as allowing calculated sets, which are sets which contain a test such as num % 2 == 1 being the set of odd numbers, to fully encapsulate the full set theory model which I may implement later.
 
 ## Licence
 
-This project uses an MIT licence.
+This project is licensed under the MIT License, see the License file for details.

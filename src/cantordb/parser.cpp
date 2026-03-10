@@ -25,6 +25,7 @@ string parse_query(cantordb& db, const string& query) {
 
 	PEC = PE_NONE;
 	parser_error = "";
+	db.error_message = "";
 
 	QueryType type = parse_header(tokens, pos);
 
@@ -175,7 +176,7 @@ static string is_element_query(cantordb& db, vector<Token>& tokens, int& pos, st
 	}
 	if(db.is_element(iset, tokens[pos].value)) {
 		return "Yes";
-	} else if(db.EC == ER_SET_NOT_FOUND) {
+	} else if(!db.error_message.empty()) {
 		return db.error_message;
 	} else {
 		return "No";
@@ -192,7 +193,7 @@ static string is_set_query(cantordb& db, vector<Token>& tokens, int& pos, string
 	}
 	if(db.is_element(tokens[pos].value, iset)) {
 		return "Yes";
-	} else if(db.EC == ER_SET_NOT_FOUND) {
+	} else if(!db.error_message.empty()) {
 		return db.error_message;
 	} else {
 		return "No";
@@ -209,7 +210,7 @@ static string is_subset_query(cantordb& db, vector<Token>& tokens, int& pos, str
 	}
 	if(db.is_subset(iset, tokens[pos].value)) {
 		return "Yes";
-	} else if(db.EC == ER_SET_NOT_FOUND) {
+	} else if(!db.error_message.empty()) {
 		return db.error_message;
 	} else {
 		return "No";
@@ -226,7 +227,7 @@ static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, s
 	}
 	if(db.is_superset(iset, tokens[pos].value)) {
 		return "Yes";
-	} else if(db.EC == ER_SET_NOT_FOUND) {
+	} else if(!db.error_message.empty()) {
 		return db.error_message;
 	} else {
 		return "No";

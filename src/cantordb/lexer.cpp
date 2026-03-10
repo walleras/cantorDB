@@ -36,7 +36,7 @@ Token classify_word(string word) {
 	int dots; // strip and count dots here
 	if(lower_word == "get") {
 		return Token {TOK_GET, word, -1, nullptr};
-	} else if(lower_word == "elements") {
+	} else if(lower_word == "elements" || lower_word == "element") {
 		return Token {TOK_ELEM, word, -1, nullptr};
 	} else if(lower_word == "of") {
 		return Token {TOK_OF, word, -1, nullptr};

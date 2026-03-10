@@ -82,11 +82,13 @@ public:
 	string list_bool_properties(string set_name);
 	string list_long_properties(string set_name);
 	string list_elements(string set_name);
+	string list_sets(string set_name);
 	int get_cardinality(string set_name);
 	string list_all_sets();
 	string list_cached_sets();
 	bool clear_cache();
 	bool rename_set(string set_name, string set_new_name);
+	bool is_element(string set_a_name, string set_b_name);
 };
 
 bool save_cantordb(const cantordb& db, const string& path);

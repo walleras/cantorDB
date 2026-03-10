@@ -847,6 +847,43 @@ bool cantordb::rename_set(string set_name, string set_new_name) {
 	set_index.erase(set_name);
 	return true;
 }
+
+string cantordb::list_sets(string set_name) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return "";
+	}
+
+	Set* s = set_index[set_name];
+	string result;
+	for (auto& element : s->member_of) {
+		if(element->set_name == UNIVERSAL_SET) continue;
+		if (!result.empty()) result += "\n";
+		result += element->set_name;
+	}
+	return result;
+}
+
+bool cantordb::is_element(string set_a_name, string set_b_name) {
+	if(set_index.find(set_a_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_a_name + "\" not found.";
+		return false;
+	}
+	if(set_index.find(set_b_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_b_name + "\" not found.";
+		return false;
+	}
+	for(int i = 0; i < (int)set_index[set_b_name]->has_element.size(); i++) {
+		if(set_index[set_a_name] == set_index[set_b_name]->has_element[i]) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // ---- Binary serialization helpers ----
 
 static void write_string(ofstream& out, const string& s) {

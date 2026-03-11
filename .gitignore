@@ -1,0 +1,26 @@
+*.exe
+*.o
+*.obj
+*.tmp
+*.db
+test_output*.txt
+
+# netdb (separate project)
+src/netdb/
+
+# Old root-level files
+/setdb.cpp
+/setdb.h
+/netdb.cpp
+/netdb.h
+/main.cpp
+/test_setdb.cpp
+/test_setdb
+/test_netdb
+/test_memory
+/test_memory.cpp
+/test_validation
+/test_validation.cpp
+/tests/test_memory.cpp
+/tests/test_validation.cpp
+/MemorySystem/

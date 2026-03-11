@@ -7,6 +7,30 @@ vector<Token> lexer(const string& query) {
 	while (i < (int)query.size()) {
 		if (isspace(query[i])) {i++; continue;}
 
+		if (query[i] == '.') {
+			// Count leading dots
+			int dots_front = 0;
+			while(i < (int)query.size() && query[i] == '.') {
+				dots_front++;
+				i++;
+			}
+			// Read the word between dots
+			if(i < (int)query.size() && isalpha(query[i])) {
+				string word = read_word(query, i);
+				// Count trailing dots
+				int dots_back = 0;
+				while(i < (int)query.size() && query[i] == '.') {
+					dots_back++;
+					i++;
+				}
+				Token tok = classify_word(word);
+				if(dots_front == dots_back) {
+					tok.priority = dots_front;
+				}
+				tokens.push_back(tok);
+			}
+			continue;
+		}
 
 		if (isalpha(query[i])) {
 			string word = read_word(query, i);
@@ -33,7 +57,6 @@ string read_word(const string& query, int& i) {
 Token classify_word(string word) {
 	string lower_word = word;
 	transform(lower_word.begin(), lower_word.end(), lower_word.begin(), ::tolower);
-	int dots; // strip and count dots here
 	if(lower_word == "get") {
 		return Token {TOK_GET, word, -1, nullptr};
 	} else if(lower_word == "elements" || lower_word == "element") {
@@ -53,7 +76,13 @@ Token classify_word(string word) {
 	} else if(lower_word == "superset") {
 		return Token {TOK_SUPER, word, -1, nullptr};
 	} else if(lower_word == "union") {
-		return Token {TOK_UNION, word, dots, nullptr};
+		return Token {TOK_UNION, word, 0, nullptr};
+	} else if(lower_word == "intersection") {
+		return Token {TOK_INTER, word, 0, nullptr};
+	} else if(lower_word == "difference") {
+		return Token {TOK_DIFF, word, 0, nullptr};
+	} else if(lower_word == "symdiff") {
+		return Token {TOK_SYMDIFF, word, 0, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}

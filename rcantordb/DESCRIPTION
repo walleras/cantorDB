@@ -1,0 +1,11 @@
+Package: rcantordb
+Title: R Bindings for CantorDB Set-Theoretic Database
+Version: 0.1.0
+Authors@R: person("walleras", role = c("aut", "cre"), email = "walleras@users.noreply.github.com")
+Description: R interface to cantordb, a set-theoretic database engine.
+    Create, query, and manipulate sets with properties and membership relations.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LinkingTo: Rcpp
+Imports: Rcpp
+SystemRequirements: C++17

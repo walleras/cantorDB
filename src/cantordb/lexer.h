@@ -7,12 +7,12 @@
 #include <cctype>
 #include <algorithm>
 
-enum TokenType {TOK_EOF, TOK_ELEM, TOK_SET, TOK_OF, TOK_IDENTIFIER, TOK_GET, TOK_UNION, TOK_INTER, TOK_DIFF, TOK_ALL, TOK_CACHE, TOK_IS, TOK_SUB, TOK_SUPER};
+enum TokenType {TOK_EOF, TOK_ELEM, TOK_SET, TOK_OF, TOK_IDENTIFIER, TOK_GET, TOK_UNION, TOK_INTER, TOK_DIFF, TOK_SYMDIFF, TOK_ALL, TOK_CACHE, TOK_IS, TOK_SUB, TOK_SUPER};
 
 struct Token {
 	TokenType type;
 	string value;
-	int dot_count;
+	int priority;
 	Set* result;
 };
 

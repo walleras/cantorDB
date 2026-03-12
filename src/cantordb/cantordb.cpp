@@ -483,6 +483,9 @@ bool cantordb::is_subset(string set_a_name, string set_b_name) {
 	Set* super_set = set_index[set_b_name];
 	Set* sub_set = set_index[set_a_name];
 	unordered_map<string, int> super_elements;
+	if(super_set->has_element.empty() == true || super_set->has_element.empty() == true) {
+		return false;
+	}
 
 	for(int i = 0; i < (int)super_set->has_element.size(); i++) {
 		super_elements[super_set->has_element[i]->set_name] = 1;
@@ -501,6 +504,9 @@ bool cantordb::is_subset(Set* set_a, Set* set_b) {
 		return false;
 	}
 	unordered_map<string, int> super_elements;
+	if(set_a->has_element.empty() == true || set_b->has_element.empty() == true) {
+		return false;
+	}
 
 	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
 		super_elements[set_b->has_element[i]->set_name] = 1;
@@ -1430,6 +1436,76 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, doubl
 	for(auto& s : indexed_sets) {
 		if(parent_elems.find(s->set_name) != parent_elems.end()) {
 			if(s->key_decimal[property] == value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_equal_than(string set_name, string property, string value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(string_property_index.find(property) == string_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No string property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = string_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " == " + value + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_value[property] == value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_equal_than(string set_name, string property, bool value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(bool_property_index.find(property) == bool_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No bool property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = bool_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " == " + (value ? "true" : "false") + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_bool[property] == value) {
 				result->has_element.push_back(s);
 			}
 		}

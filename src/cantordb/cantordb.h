@@ -34,6 +34,11 @@ class cantordb {
 public:
 	string name;
 	map<string, Set*> set_index;
+	unordered_map<string, vector<Set*>> integer_property_index;
+	unordered_map<string, vector<Set*>> string_property_index;
+	unordered_map<string, vector<Set*>> double_property_index;
+	unordered_map<string, vector<Set*>> bool_property_index;
+	unordered_map<string, vector<Set*>> long_property_index;
 	ERROR_CODE EC;
 	string error_message;
 
@@ -53,15 +58,24 @@ public:
 	void add_member(string set_name, Set* element);
 	bool remove_member(string set_name, string element_name);
 	Set* set_union(string set_a_name, string set_b_name);
+	Set* set_union(Set* set_a, Set* set_b);
 	Set* set_intersection(string set_a_name, string set_b_name);
+	Set* set_intersection(Set* set_a, Set* set_b);
 	Set* set_difference(string set_a_name, string set_b_name);
+	Set* set_difference(Set* set_a, Set* set_b);
 	bool is_disjoint(string set_a_name, string set_b_name);
+	bool is_disjoint(Set* set_a, Set* set_b);
 	Set* symmetric_difference(string set_a_name, string set_b_name);
+	Set* symmetric_difference(Set* set_a, Set* set_b);
 	Set* set_complement(string set_name);
 	bool is_subset(string set_a_name, string set_b_name);
+	bool is_subset(Set* set_a, Set* set_b);
 	bool is_superset(string set_a_name, string set_b_name);
+	bool is_superset(Set* set_a, Set* set_b);
 	bool is_equal(string set_a_name, string set_b_name);
+	bool is_equal(Set* set_a, Set* set_b);
 	bool is_proper_subset(string set_a_name, string set_b_name);
+	bool is_proper_subset(Set* set_a, Set* set_b);
 	variant<bool, long, string, int, double> get_property(string set_name, string key_name);
 	int get_property_safe_int(string set_name, string key_name);
 	string get_property_safe_string(string set_name, string key_name);
@@ -89,6 +103,15 @@ public:
 	bool clear_cache();
 	bool rename_set(string set_name, string set_new_name);
 	bool is_element(string set_a_name, string set_b_name);
+	Set* where_elements_greater_than(string set_name, string property, int value);
+	Set* where_elements_greater_than(string set_name, string property, long value);
+	Set* where_elements_greater_than(string set_name, string property, double value);
+	Set* where_elements_lesser_than(string set_name, string property, int value);
+	Set* where_elements_lesser_than(string set_name, string property, long value);
+	Set* where_elements_lesser_than(string set_name, string property, double value);
+	Set* where_elements_equal_than(string set_name, string property, int value);
+	Set* where_elements_equal_than(string set_name, string property, long value);
+	Set* where_elements_equal_than(string set_name, string property, double value);
 };
 
 bool save_cantordb(const cantordb& db, const string& path);

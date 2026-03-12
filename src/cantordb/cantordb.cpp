@@ -1,4 +1,5 @@
 #include "cantordb.h"
+#include <algorithm>
 
 const string UNIVERSAL_SET = "__universal__";
 const string CACHE_SET = "__cache__";
@@ -58,6 +59,7 @@ bool cantordb::add_property(string key, int value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
+	integer_property_index[key].push_back(set_index[set_name]);
 	set_index[set_name]->key_num[key] = value;
 	set_index[set_name]->key_index[key] = 0;
 	return true;
@@ -74,6 +76,7 @@ bool cantordb::add_property(string key, string value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
+	string_property_index[key].push_back(set_index[set_name]);
 	set_index[set_name]->key_value[key] = value;
 	set_index[set_name]->key_index[key] = 1;
 	return true;
@@ -90,6 +93,7 @@ bool cantordb::add_property(string key, double value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
+	double_property_index[key].push_back(set_index[set_name]);
 	set_index[set_name]->key_decimal[key] = value;
 	set_index[set_name]->key_index[key] = 2;
 	return true;
@@ -106,6 +110,7 @@ bool cantordb::add_property(string key, bool value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
+	bool_property_index[key].push_back(set_index[set_name]);
 	set_index[set_name]->key_bool[key] = value;
 	set_index[set_name]->key_index[key] = 3;
 	return true;
@@ -122,6 +127,7 @@ bool cantordb::add_property(string key, long value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
+	long_property_index[key].push_back(set_index[set_name]);
 	set_index[set_name]->key_long[key] = value;
 	set_index[set_name]->key_index[key] = 4;
 	return true;
@@ -183,6 +189,7 @@ bool cantordb::remove_member(string set_name, string element_name) {
 		error_message = "Error: Set \"" + element_name + "\" not found.";
 		return false;
 	}
+	
 
 	Set* parent = set_index[set_name];
 	Set* element = set_index[element_name];
@@ -236,6 +243,30 @@ Set* cantordb::set_union(string set_a_name, string set_b_name) {
 	return result;
 }
 
+Set* cantordb::set_union(Set* set_a, Set* set_b) {
+	if(!set_a || !set_b) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Null set pointer.";
+		return nullptr;
+	}
+	Set* result = new Set();
+	result->set_name = set_a->set_name + " ∪ " + set_b->set_name;
+
+	unordered_map<string, int> unique_elems;
+
+	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
+		result->has_element.push_back(set_a->has_element[i]);
+		unique_elems[set_a->has_element[i]->set_name] = 1;
+	}
+	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
+		if(unique_elems.find(set_b->has_element[i]->set_name) == unique_elems.end()) {
+			result->has_element.push_back(set_b->has_element[i]);
+		}
+	}
+	add_member(CACHE_SET, result);
+	return result;
+}
+
 Set* cantordb::set_intersection(string set_a_name, string set_b_name) {
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -266,6 +297,30 @@ Set* cantordb::set_intersection(string set_a_name, string set_b_name) {
 
 	add_member(CACHE_SET, result);
 
+	return result;
+}
+
+Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
+	if(!set_a || !set_b) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Null set pointer.";
+		return nullptr;
+	}
+	Set* result = new Set();
+	result->set_name = set_a->set_name + " ∩ " + set_b->set_name;
+
+	unordered_map<string, int> unique_elems;
+
+	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
+		unique_elems[set_a->has_element[i]->set_name] = 1;
+	}
+	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
+		if(unique_elems.find(set_b->has_element[i]->set_name) != unique_elems.end()) {
+			result->has_element.push_back(set_b->has_element[i]);
+		}
+	}
+
+	add_member(CACHE_SET, result);
 	return result;
 }
 
@@ -300,6 +355,29 @@ Set* cantordb::set_difference(string set_a_name, string set_b_name) {
 	return result;
 }
 
+Set* cantordb::set_difference(Set* set_a, Set* set_b) {
+	if(!set_a || !set_b) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Null set pointer.";
+		return nullptr;
+	}
+	Set* result = new Set();
+	result->set_name = set_a->set_name + " - " + set_b->set_name;
+
+	unordered_map<string, int> b_elements;
+
+	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
+		b_elements[set_b->has_element[i]->set_name] = 1;
+	}
+	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
+		if(b_elements.find(set_a->has_element[i]->set_name) == b_elements.end()) {
+			result->has_element.push_back(set_a->has_element[i]);
+		}
+	}
+	add_member(CACHE_SET, result);
+	return result;
+}
+
 bool cantordb::is_disjoint(string set_a_name, string set_b_name) {
 	Set* intersection = set_intersection(set_a_name, set_b_name);
 	if(intersection == nullptr) {
@@ -307,6 +385,14 @@ bool cantordb::is_disjoint(string set_a_name, string set_b_name) {
 	}
 	bool result = intersection->has_element.size() == 0;
 	return result;
+}
+
+bool cantordb::is_disjoint(Set* set_a, Set* set_b) {
+	Set* intersection = set_intersection(set_a, set_b);
+	if(intersection == nullptr) {
+		return false;
+	}
+	return intersection->has_element.size() == 0;
 }
 
 Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
@@ -326,6 +412,35 @@ Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
 
 	Set* result = new Set();
 	result->set_name = set_a_name + " ⊕ " + set_b_name;
+
+	unordered_map<string, int> unique_elems;
+
+	for(int i = 0; i < (int)set_a_difference->has_element.size(); i++) {
+		result->has_element.push_back(set_a_difference->has_element[i]);
+		unique_elems[set_a_difference->has_element[i]->set_name] = 1;
+	}
+	for(int i = 0; i < (int)set_b_difference->has_element.size(); i++) {
+		if(unique_elems.find(set_b_difference->has_element[i]->set_name) == unique_elems.end()) {
+			result->has_element.push_back(set_b_difference->has_element[i]);
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
+	if(!set_a || !set_b) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Null set pointer.";
+		return nullptr;
+	}
+
+	Set* set_a_difference = set_difference(set_a, set_b);
+	Set* set_b_difference = set_difference(set_b, set_a);
+
+	Set* result = new Set();
+	result->set_name = set_a->set_name + " ⊕ " + set_b->set_name;
 
 	unordered_map<string, int> unique_elems;
 
@@ -379,9 +494,33 @@ bool cantordb::is_subset(string set_a_name, string set_b_name) {
 	}
 	return true;
 }
+bool cantordb::is_subset(Set* set_a, Set* set_b) {
+	if(!set_a || !set_b) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Null set pointer.";
+		return false;
+	}
+	unordered_map<string, int> super_elements;
+
+	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
+		super_elements[set_b->has_element[i]->set_name] = 1;
+	}
+	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
+		if(super_elements.find(set_a->has_element[i]->set_name) == super_elements.end()) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool cantordb::is_superset(string set_a_name, string set_b_name) {
 	return is_subset(set_b_name, set_a_name);
 }
+
+bool cantordb::is_superset(Set* set_a, Set* set_b) {
+	return is_subset(set_b, set_a);
+}
+
 bool cantordb::is_equal(string set_a_name, string set_b_name) {
 	if(is_subset(set_a_name, set_b_name) && is_subset(set_b_name, set_a_name)) {
 		return true;
@@ -389,12 +528,21 @@ bool cantordb::is_equal(string set_a_name, string set_b_name) {
 		return false;
 	}
 }
+
+bool cantordb::is_equal(Set* set_a, Set* set_b) {
+	return is_subset(set_a, set_b) && is_subset(set_b, set_a);
+}
+
 bool cantordb::is_proper_subset(string set_a_name, string set_b_name) {
 	if(is_subset(set_a_name, set_b_name) && !is_equal(set_a_name, set_b_name)) {
 		return true;
 	} else {
 		return false;
 	}
+}
+
+bool cantordb::is_proper_subset(Set* set_a, Set* set_b) {
+	return is_subset(set_a, set_b) && !is_equal(set_a, set_b);
 }
 variant<bool, long, string, int, double> cantordb::get_property(string set_name, string key_name) {
 	if(set_index.find(set_name) == set_index.end()) {
@@ -523,15 +671,28 @@ bool cantordb::delete_property(string set_name, string key_name) {
 		error_message = "Error: Key \"" + key_name + "\" not found in set \"" + set_name + "\".";
 		return false;
 	}
-	switch(set_index[set_name]->key_index[key_name]) {
-		case 0: set_index[set_name]->key_num.erase(key_name); break;
-		case 1: set_index[set_name]->key_value.erase(key_name); break;
-		case 2: set_index[set_name]->key_decimal.erase(key_name); break;
-		case 3: set_index[set_name]->key_bool.erase(key_name); break;
-		case 4: set_index[set_name]->key_long.erase(key_name); break;
+	Set* target = set_index[set_name];
+	int type_tag = target->key_index[key_name];
+
+	// Remove from the property-type index
+	auto remove_from_index = [&](unordered_map<string, vector<Set*>>& idx) {
+		auto it = idx.find(key_name);
+		if(it != idx.end()) {
+			auto& vec = it->second;
+			vec.erase(std::remove(vec.begin(), vec.end(), target), vec.end());
+			if(vec.empty()) idx.erase(it);
+		}
+	};
+
+	switch(type_tag) {
+		case 0: target->key_num.erase(key_name); remove_from_index(integer_property_index); break;
+		case 1: target->key_value.erase(key_name); remove_from_index(string_property_index); break;
+		case 2: target->key_decimal.erase(key_name); remove_from_index(double_property_index); break;
+		case 3: target->key_bool.erase(key_name); remove_from_index(bool_property_index); break;
+		case 4: target->key_long.erase(key_name); remove_from_index(long_property_index); break;
 		default: return false;
 	}
-	set_index[set_name]->key_index.erase(key_name);
+	target->key_index.erase(key_name);
 	return true;
 }
 bool cantordb::update_property(string set_name, string key_name, int value) {
@@ -937,7 +1098,7 @@ static void read_properties(ifstream& in, Set* s) {
 	for (uint32_t i = 0; i < count; i++) {
 		string key = read_string(in);
 		uint8_t tag; in.read(reinterpret_cast<char*>(&tag), 1);
-		s->key_index[key] = 1;
+		s->key_index[key] = tag;
 		if (tag == 0) {
 			int val; in.read(reinterpret_cast<char*>(&val), sizeof(val));
 			s->key_num[key] = val;
@@ -954,6 +1115,328 @@ static void read_properties(ifstream& in, Set* s) {
 			s->key_long[key] = val;
 		}
 	}
+}
+
+Set* cantordb::where_elements_greater_than(string set_name, string property, int value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(integer_property_index.find(property) == integer_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No integer property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = integer_property_index[property];
+
+	// Intersect parent's elements with sets that have this property, filter by value
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_num[property] > value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_lesser_than(string set_name, string property, int value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(integer_property_index.find(property) == integer_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No integer property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = integer_property_index[property];
+
+	// Intersect parent's elements with sets that have this property, filter by value
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_num[property] < value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_equal_than(string set_name, string property, int value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(integer_property_index.find(property) == integer_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No integer property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = integer_property_index[property];
+
+	// Intersect parent's elements with sets that have this property, filter by value
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_num[property] == value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+// ---- long overloads ----
+
+Set* cantordb::where_elements_greater_than(string set_name, string property, long value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(long_property_index.find(property) == long_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No long property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = long_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_long[property] > value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_lesser_than(string set_name, string property, long value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(long_property_index.find(property) == long_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No long property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = long_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_long[property] < value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_equal_than(string set_name, string property, long value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(long_property_index.find(property) == long_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No long property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = long_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_long[property] == value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+// ---- double overloads ----
+
+Set* cantordb::where_elements_greater_than(string set_name, string property, double value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(double_property_index.find(property) == double_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No double property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = double_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_decimal[property] > value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_lesser_than(string set_name, string property, double value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(double_property_index.find(property) == double_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No double property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = double_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_decimal[property] < value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
+}
+
+Set* cantordb::where_elements_equal_than(string set_name, string property, double value) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return nullptr;
+	}
+	if(double_property_index.find(property) == double_property_index.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: No double property \"" + property + "\" in index.";
+		return nullptr;
+	}
+
+	Set* parent = set_index[set_name];
+	vector<Set*>& indexed_sets = double_property_index[property];
+
+	unordered_map<string, int> parent_elems;
+	for(auto& elem : parent->has_element) {
+		parent_elems[elem->set_name] = 1;
+	}
+
+	Set* result = new Set();
+	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
+
+	for(auto& s : indexed_sets) {
+		if(parent_elems.find(s->set_name) != parent_elems.end()) {
+			if(s->key_decimal[property] == value) {
+				result->has_element.push_back(s);
+			}
+		}
+	}
+
+	add_member(CACHE_SET, result);
+	return result;
 }
 
 // ---- Save (skips CACHE_SET and its members) ----
@@ -1031,5 +1514,16 @@ cantordb* load_cantordb(const string& path) {
 	}
 
 	if (!in.good()) { delete db; return nullptr; }
+
+	// Build property indexes
+	for (auto& [name, s] : db->set_index) {
+		if (name == UNIVERSAL_SET || name == CACHE_SET) continue;
+		for (auto& [key, val] : s->key_num)     db->integer_property_index[key].push_back(s);
+		for (auto& [key, val] : s->key_value)    db->string_property_index[key].push_back(s);
+		for (auto& [key, val] : s->key_decimal)  db->double_property_index[key].push_back(s);
+		for (auto& [key, val] : s->key_bool)     db->bool_property_index[key].push_back(s);
+		for (auto& [key, val] : s->key_long)     db->long_property_index[key].push_back(s);
+	}
+
 	return db;
 }

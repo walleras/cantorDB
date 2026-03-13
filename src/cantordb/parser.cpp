@@ -13,6 +13,8 @@ static QueryType parse_elem(vector<Token>& tokens, int& pos);
 static QueryType parse_set(vector<Token>& tokens, int& pos);
 static QueryType parse_all(vector<Token>& tokens, int& pos);
 static QueryType parse_cache(vector<Token>& tokens, int& pos);
+static QueryType parse_cardinality(vector<Token>& tokens, int& pos);
+static QueryType parse_properties(vector<Token>& tokens, int& pos);
 static void element_collapse_pass(cantordb& db, vector<Token>& tokens);
 static Token error_token(const string& message);
 static Token union_operation(cantordb& db, vector<Token>& tokens, int operator_pos);
@@ -24,6 +26,9 @@ static string is_element_query(cantordb& db, vector<Token>& tokens, int& pos, st
 static string is_set_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_subset_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_disjoint_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_proper_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_equiv_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static void where_collapse_pass(cantordb& db, vector<Token>& tokens);
 static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos);
 static string create_query(cantordb& db, vector<Token>& tokens, int& pos);
@@ -78,6 +83,23 @@ string parse_query(cantordb& db, const string& query) {
 		}
 		string set_name = tokens[pos].value;
 		return db.list_sets(set_name);
+	}
+
+	if(type == PROPERTIES) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		return db.list_properties(tokens[pos].value);
+	}
+
+	if(type == CARDINALITY) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		string set_name = tokens[pos].value;
+		int card = db.get_cardinality(set_name);
+		if(!db.error_message.empty()) return db.error_message;
+		return to_string(card);
 	}
 
 	if(type == CREATE) {
@@ -544,6 +566,12 @@ static QueryType parse_query_type(vector<Token>& tokens, int& pos) {
 		case TOK_CACHE:
 			pos++;
 			return parse_cache(tokens, pos);
+		case TOK_CARDINALITY:
+			pos++;
+			return parse_cardinality(tokens, pos);
+		case TOK_PROPERTY:
+			pos++;
+			return parse_properties(tokens, pos);
 		default:
 			PEC = PE_SYNTAX;
 			parser_error = "Syntax Error: GET must be followed by ELEMENTS, SETS, ALL, or CACHE.";
@@ -558,6 +586,26 @@ static QueryType parse_elem(vector<Token>& tokens, int& pos) {
 	}
 	PEC = PE_SYNTAX;
 	parser_error = "Syntax Error: ELEMENTS must be followed by OF.";
+	return ERR;
+}
+
+static QueryType parse_properties(vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type == TOK_OF) {
+		pos++;
+		return PROPERTIES;
+	}
+	PEC = PE_SYNTAX;
+	parser_error = "Syntax Error: PROPERTIES must be followed by OF.";
+	return ERR;
+}
+
+static QueryType parse_cardinality(vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type == TOK_OF) {
+		pos++;
+		return CARDINALITY;
+	}
+	PEC = PE_SYNTAX;
+	parser_error = "Syntax Error: CARDINALITY must be followed by OF.";
 	return ERR;
 }
 
@@ -717,8 +765,17 @@ static string is_query(cantordb& db, vector<Token>& tokens, int& pos) {
 	} else if (tokens[pos].type == TOK_SUPER) {
 		pos++;
 		return is_superset_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_DISJOINT) {
+		pos++;
+		return is_disjoint_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_PROPER) {
+		pos++;
+		return is_proper_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_EQUIV) {
+		pos++;
+		return is_equiv_query(db, tokens, pos, iset);
 	} else {
-		return "Syntax Error: Expected ELEMENT, SET, SUBSET, or SUPERSET.";
+		return "Syntax Error: Expected ELEMENT, SET, SUBSET, SUPERSET, DISJOINT, PROPER, or EQUIVALENT.";
 	}
 }
 
@@ -782,6 +839,53 @@ static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, s
 		return "Syntax Error: Expected set name after OF.";
 	}
 	if(db.is_superset(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_disjoint_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after DISJOINT.";
+	}
+	if(db.is_disjoint(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_proper_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_SUB) {
+		return "Syntax Error: Expected SUBSET after PROPER.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_OF) {
+		return "Syntax Error: Expected OF after PROPER SUBSET.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after OF.";
+	}
+	if(db.is_proper_subset(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_equiv_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after EQUIVALENT.";
+	}
+	if(db.is_equal(iset, tokens[pos].value)) {
 		return "Yes";
 	} else if(!db.error_message.empty()) {
 		return db.error_message;

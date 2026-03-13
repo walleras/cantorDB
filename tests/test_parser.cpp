@@ -339,6 +339,126 @@ int main() {
 	}
 	cout << endl;
 
+	// --- Test 28: GET CARDINALITY OF ---
+	cout << "--- Test 28: GET CARDINALITY OF ---" << endl;
+	{
+		string result = parse_query(db, "GET CARDINALITY OF Animals");
+		check("returns 3", result == "3");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 29: GET CARDINALITY OF nonexistent ---
+	cout << "--- Test 29: GET CARDINALITY OF nonexistent ---" << endl;
+	{
+		string result = parse_query(db, "GET CARDINALITY OF Ghost");
+		check("returns error", result.find("Error") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 30: GET CARDINALITY OF with WHERE collapse ---
+	cout << "--- Test 30: GET CARDINALITY with WHERE ---" << endl;
+	{
+		string result = parse_query(db, "GET CARDINALITY OF Animals WHERE legs > 0");
+		check("returns 2 (Dog + Cat)", result == "2");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 31: GET CARDINALITY OF with set algebra collapse ---
+	cout << "--- Test 31: GET CARDINALITY with UNION ---" << endl;
+	{
+		string result = parse_query(db, "GET CARDINALITY OF Animals UNION Pets");
+		check("returns 4 (Dog+Cat+Fish+Hamster)", result == "4");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 32: GET CARDINALITY with WHERE + set algebra ---
+	cout << "--- Test 32: GET CARDINALITY with WHERE + UNION ---" << endl;
+	{
+		string result = parse_query(db, "GET CARDINALITY OF Animals WHERE legs > 0 UNION Pets WHERE legs > 0");
+		check("returns 3 (Dog+Cat+Hamster)", result == "3");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 33: IS DISJOINT (yes) ---
+	cout << "--- Test 33: IS DISJOINT (yes) ---" << endl;
+	{
+		db.create_set("Rocks");
+		db.create_set("Granite");
+		db.add_member("Rocks", "Granite");
+		string result = parse_query(db, "IS Animals DISJOINT Rocks");
+		check("Animals disjoint Rocks = Yes", result == "Yes");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 34: IS DISJOINT (no) ---
+	cout << "--- Test 34: IS DISJOINT (no) ---" << endl;
+	{
+		string result = parse_query(db, "IS Animals DISJOINT Pets");
+		check("Animals disjoint Pets = No", result == "No");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 35: IS EQUIVALENT (yes) ---
+	cout << "--- Test 35: IS EQUIVALENT (yes) ---" << endl;
+	{
+		db.create_set("AnimalsCopy");
+		db.add_member("AnimalsCopy", "Dog");
+		db.add_member("AnimalsCopy", "Cat");
+		db.add_member("AnimalsCopy", "Fish");
+		string result = parse_query(db, "IS Animals EQUAL AnimalsCopy");
+		check("Animals equiv AnimalsCopy = Yes", result == "Yes");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 36: IS EQUIVALENT (no) ---
+	cout << "--- Test 36: IS EQUIVALENT (no) ---" << endl;
+	{
+		string result = parse_query(db, "IS Animals EQUAL Pets");
+		check("Animals equiv Pets = No", result == "No");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 37: IS PROPER SUBSET OF (yes) ---
+	cout << "--- Test 37: IS PROPER SUBSET OF (yes) ---" << endl;
+	{
+		// Pets has Dog, Cat, Hamster. Animals has Dog, Cat, Fish.
+		// Need a real proper subset: create one
+		db.create_set("TwoAnimals");
+		db.add_member("TwoAnimals", "Dog");
+		db.add_member("TwoAnimals", "Cat");
+		string result = parse_query(db, "IS TwoAnimals PROPER SUBSET OF Animals");
+		check("TwoAnimals proper subset of Animals = Yes", result == "Yes");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 38: IS PROPER SUBSET OF (no — equal sets) ---
+	cout << "--- Test 38: IS PROPER SUBSET OF (no - equal) ---" << endl;
+	{
+		string result = parse_query(db, "IS Animals PROPER SUBSET OF AnimalsCopy");
+		check("Animals proper subset of AnimalsCopy = No", result == "No");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 39: IS PROPER SUBSET OF (no — not subset) ---
+	cout << "--- Test 39: IS PROPER SUBSET OF (no - not subset) ---" << endl;
+	{
+		string result = parse_query(db, "IS Animals PROPER SUBSET OF Pets");
+		check("Animals proper subset of Pets = No", result == "No");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
 	cout << "=== Results: " << pass_count << " passed, " << fail_count << " failed ===" << endl;
 	return fail_count > 0 ? 1 : 0;
 }

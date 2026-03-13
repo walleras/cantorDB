@@ -124,7 +124,15 @@ Token classify_word(string word) {
 		return Token {TOK_DELETE, word, -1, nullptr};
 	} else if(lower_word == "property") {
 		return Token {TOK_PROPERTY, word, -1, nullptr};
-	} else {
+	} else if(lower_word == "cardinality") {
+		return Token {TOK_CARDINALITY, word, -1, nullptr};
+	} else if(lower_word == "disjoint") {
+		return Token {TOK_DISJOINT, word, -1, nullptr};
+	} else if(lower_word == "equal") {
+		return Token {TOK_EQUIV, word, -1, nullptr};
+	} else if(lower_word == "proper") {
+		return Token {TOK_PROPER, word, -1, nullptr};
+	} else{
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}
 }

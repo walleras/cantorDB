@@ -37,7 +37,7 @@
 
 ### Properties
 - [ ] `SET <Set> <key> = <value>` — expose `add_property`
-- [ ] `GET <key> OF <Set>` — expose `get_property`
+- [ ] `GET PROPERTY <key> OF <Set>` — expose `get_property`
 - [x] `UPDATE <Set> <key> = <value>` — expose `update_property`
 - [ ] `DELETE PROPERTY <key> OF <Set>` — expose `delete_property`
 - [ ] `GET PROPERTIES OF <Set>` — expose `list_properties`
@@ -52,7 +52,7 @@
 - [ ] `COMPLEMENT OF <Set>` — expose `set_complement`
 
 ### Utility
-- [ ] `GET CARDINALITY OF <Set>` — expose `get_cardinality`
+- [x] `GET CARDINALITY OF <Set>` — expose `get_cardinality`
 - [ ] `RENAME <Set> TO <NewName>` — expose `rename_set`
 - [ ] `CLEAR CACHE` — expose `clear_cache`
 - [ ] `SAVE <path>` / `LOAD <path>` — expose `save_cantordb` / `load_cantordb`

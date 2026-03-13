@@ -1037,12 +1037,9 @@ bool cantordb::is_element(string set_a_name, string set_b_name) {
 		error_message = "Error: Set \"" + set_b_name + "\" not found.";
 		return false;
 	}
-	for(int i = 0; i < (int)set_index[set_b_name]->has_element.size(); i++) {
-		if(set_index[set_a_name] == set_index[set_b_name]->has_element[i]) {
-			return true;
-		}
-	}
-	return false;
+	Set* a = set_index[set_a_name];
+	auto& elems = set_index[set_b_name]->has_element;
+	return std::binary_search(elems.begin(), elems.end(), a);
 }
 
 // ---- Binary serialization helpers ----

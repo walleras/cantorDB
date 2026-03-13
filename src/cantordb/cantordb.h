@@ -15,6 +15,7 @@ using namespace std;
 
 extern const string UNIVERSAL_SET;
 extern const string CACHE_SET;
+extern const string TRASH_SET;
 
 enum ERROR_CODE {ER_SET_EX, ER_SET_NOT_FOUND, ER_KEY_EX, ER_ELEM_NOT_MEM, ER_KEY_NOT_FOUND, ER_KEY_WRONG_TYPE};
 
@@ -53,7 +54,7 @@ public:
 	bool add_property(string key, double value, string set_name);
 	bool add_property(string key, bool value, string set_name);
 	bool add_property(string key, long value, string set_name);
-	bool delete_set(string set_name);
+	bool delete_set(string set_name, bool safe = true);
 	bool add_member(string set_name, string element_name);
 	void add_member(string set_name, Set* element);
 	bool remove_member(string set_name, string element_name);
@@ -112,6 +113,8 @@ public:
 	Set* where_elements_equal_than(string set_name, string property, int value);
 	Set* where_elements_equal_than(string set_name, string property, long value);
 	Set* where_elements_equal_than(string set_name, string property, double value);
+	Set* where_elements_equal_than(string set_name, string property, string value);
+	Set* where_elements_equal_than(string set_name, string property, bool value);
 };
 
 bool save_cantordb(const cantordb& db, const string& path);

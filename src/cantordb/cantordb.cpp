@@ -3,11 +3,13 @@
 
 const string UNIVERSAL_SET = "__universal__";
 const string CACHE_SET = "__cache__";
+const string TRASH_SET = "__trash__";
 
 cantordb::cantordb(string name) {
 	this->name = name;
 	create_set(UNIVERSAL_SET, true);
 	create_set(CACHE_SET, true);
+	create_set(TRASH_SET, true);
 }
 
 cantordb::~cantordb() {
@@ -59,7 +61,12 @@ bool cantordb::add_property(string key, int value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
-	integer_property_index[key].push_back(set_index[set_name]);
+	{
+		auto& vec = integer_property_index[key];
+		Set* s = set_index[set_name];
+		auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+		vec.insert(pos, s);
+	}
 	set_index[set_name]->key_num[key] = value;
 	set_index[set_name]->key_index[key] = 0;
 	return true;
@@ -76,7 +83,12 @@ bool cantordb::add_property(string key, string value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
-	string_property_index[key].push_back(set_index[set_name]);
+	{
+		auto& vec = string_property_index[key];
+		Set* s = set_index[set_name];
+		auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+		vec.insert(pos, s);
+	}
 	set_index[set_name]->key_value[key] = value;
 	set_index[set_name]->key_index[key] = 1;
 	return true;
@@ -93,7 +105,12 @@ bool cantordb::add_property(string key, double value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
-	double_property_index[key].push_back(set_index[set_name]);
+	{
+		auto& vec = double_property_index[key];
+		Set* s = set_index[set_name];
+		auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+		vec.insert(pos, s);
+	}
 	set_index[set_name]->key_decimal[key] = value;
 	set_index[set_name]->key_index[key] = 2;
 	return true;
@@ -110,7 +127,12 @@ bool cantordb::add_property(string key, bool value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
-	bool_property_index[key].push_back(set_index[set_name]);
+	{
+		auto& vec = bool_property_index[key];
+		Set* s = set_index[set_name];
+		auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+		vec.insert(pos, s);
+	}
 	set_index[set_name]->key_bool[key] = value;
 	set_index[set_name]->key_index[key] = 3;
 	return true;
@@ -127,19 +149,27 @@ bool cantordb::add_property(string key, long value, string set_name) {
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
 		return false;
 	}
-	long_property_index[key].push_back(set_index[set_name]);
+	{
+		auto& vec = long_property_index[key];
+		Set* s = set_index[set_name];
+		auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+		vec.insert(pos, s);
+	}
 	set_index[set_name]->key_long[key] = value;
 	set_index[set_name]->key_index[key] = 4;
 	return true;
 }
 
-bool cantordb::delete_set(string set_name) {
+bool cantordb::delete_set(string set_name, bool safe) {
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
 		return false;
 	}
 	Set* target = set_index[set_name];
+	if(safe) {
+		add_member(TRASH_SET, target);
+	}
 
 	for(int i = 0; i < (int)target->member_of.size(); i++) {
 		auto& vec = target->member_of[i]->has_element;
@@ -167,15 +197,22 @@ bool cantordb::add_member(string set_name, string element_name) {
 		error_message = "Error: Set \"" + element_name + "\" not found.";
 		return false;
 	}
-	set_index[set_name]->has_element.push_back(set_index[element_name]);
-	set_index[element_name]->member_of.push_back(set_index[set_name]);
+	Set* parent = set_index[set_name];
+	Set* child = set_index[element_name];
+	auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), child);
+	parent->has_element.insert(pos, child);
+	auto mpos = std::lower_bound(child->member_of.begin(), child->member_of.end(), parent);
+	child->member_of.insert(mpos, parent);
 	return true;
 }
 
 void cantordb::add_member(string set_name, Set* element) {
 	set_index[element->set_name] = element;
-	set_index[set_name]->has_element.push_back(element);
-	element->member_of.push_back(set_index[set_name]);
+	Set* parent = set_index[set_name];
+	auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), element);
+	parent->has_element.insert(pos, element);
+	auto mpos = std::lower_bound(element->member_of.begin(), element->member_of.end(), parent);
+	element->member_of.insert(mpos, parent);
 }
 
 bool cantordb::remove_member(string set_name, string element_name) {
@@ -195,8 +232,8 @@ bool cantordb::remove_member(string set_name, string element_name) {
 	Set* element = set_index[element_name];
 
 	auto& has_elem_vec = parent->has_element;
-	auto it = std::find(has_elem_vec.begin(), has_elem_vec.end(), element);
-	if(it == has_elem_vec.end()) {
+	auto it = std::lower_bound(has_elem_vec.begin(), has_elem_vec.end(), element);
+	if(it == has_elem_vec.end() || *it != element) {
 		EC = ER_ELEM_NOT_MEM;
 		error_message = "Error: Element not a member of " + element_name;
 		return false;
@@ -204,7 +241,8 @@ bool cantordb::remove_member(string set_name, string element_name) {
 	has_elem_vec.erase(it);
 
 	auto& member_of_vec = element->member_of;
-	member_of_vec.erase(std::find(member_of_vec.begin(), member_of_vec.end(), parent));
+	auto mit = std::lower_bound(member_of_vec.begin(), member_of_vec.end(), parent);
+	member_of_vec.erase(mit);
 
 	return true;
 }
@@ -223,24 +261,7 @@ Set* cantordb::set_union(string set_a_name, string set_b_name) {
 
 	Set* set_a = set_index[set_a_name];
 	Set* set_b = set_index[set_b_name];
-	Set* result = new Set();
-	result->set_name = set_a_name + " ∪ " + set_b_name;
-
-
-
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		result->has_element.push_back(set_a->has_element[i]);
-		unique_elems[set_a->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		if(unique_elems.find(set_b->has_element[i]->set_name) == unique_elems.end()) {
-			result->has_element.push_back(set_b->has_element[i]);
-		}
-	}
-	add_member(CACHE_SET, result);
-	return result;
+	return set_union(set_a, set_b);
 }
 
 Set* cantordb::set_union(Set* set_a, Set* set_b) {
@@ -252,17 +273,22 @@ Set* cantordb::set_union(Set* set_a, Set* set_b) {
 	Set* result = new Set();
 	result->set_name = set_a->set_name + " ∪ " + set_b->set_name;
 
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		result->has_element.push_back(set_a->has_element[i]);
-		unique_elems[set_a->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		if(unique_elems.find(set_b->has_element[i]->set_name) == unique_elems.end()) {
-			result->has_element.push_back(set_b->has_element[i]);
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) {
+			result->has_element.push_back(a[i++]);
+		} else if(a[i] > b[j]) {
+			result->has_element.push_back(b[j++]);
+		} else {
+			result->has_element.push_back(a[i++]);
+			j++;
 		}
 	}
+	while(i < (int)a.size()) result->has_element.push_back(a[i++]);
+	while(j < (int)b.size()) result->has_element.push_back(b[j++]);
+
 	add_member(CACHE_SET, result);
 	return result;
 }
@@ -281,23 +307,7 @@ Set* cantordb::set_intersection(string set_a_name, string set_b_name) {
 
 	Set* set_a = set_index[set_a_name];
 	Set* set_b = set_index[set_b_name];
-	Set* result = new Set();
-	result->set_name = set_a_name + " ∩ " + set_b_name;
-
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		unique_elems[set_a->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		if(unique_elems.find(set_b->has_element[i]->set_name) != unique_elems.end()) {
-			result->has_element.push_back(set_b->has_element[i]);
-		}
-	}
-
-	add_member(CACHE_SET, result);
-
-	return result;
+	return set_intersection(set_a, set_b);
 }
 
 Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
@@ -309,14 +319,17 @@ Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
 	Set* result = new Set();
 	result->set_name = set_a->set_name + " ∩ " + set_b->set_name;
 
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		unique_elems[set_a->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		if(unique_elems.find(set_b->has_element[i]->set_name) != unique_elems.end()) {
-			result->has_element.push_back(set_b->has_element[i]);
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) {
+			i++;
+		} else if(a[i] > b[j]) {
+			j++;
+		} else {
+			result->has_element.push_back(a[i++]);
+			j++;
 		}
 	}
 
@@ -338,21 +351,7 @@ Set* cantordb::set_difference(string set_a_name, string set_b_name) {
 
 	Set* set_a = set_index[set_a_name];
 	Set* set_b = set_index[set_b_name];
-	Set* result = new Set();
-	result->set_name = set_a_name + " - " + set_b_name;
-
-	unordered_map<string, int> b_elements;
-
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		b_elements[set_b->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		if(b_elements.find(set_a->has_element[i]->set_name) == b_elements.end()) {
-			result->has_element.push_back(set_a->has_element[i]);
-		}
-	}
-	add_member(CACHE_SET, result);
-	return result;
+	return set_difference(set_a, set_b);
 }
 
 Set* cantordb::set_difference(Set* set_a, Set* set_b) {
@@ -364,35 +363,49 @@ Set* cantordb::set_difference(Set* set_a, Set* set_b) {
 	Set* result = new Set();
 	result->set_name = set_a->set_name + " - " + set_b->set_name;
 
-	unordered_map<string, int> b_elements;
-
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		b_elements[set_b->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		if(b_elements.find(set_a->has_element[i]->set_name) == b_elements.end()) {
-			result->has_element.push_back(set_a->has_element[i]);
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) {
+			result->has_element.push_back(a[i++]);
+		} else if(a[i] > b[j]) {
+			j++;
+		} else {
+			i++;
+			j++;
 		}
 	}
+	while(i < (int)a.size()) result->has_element.push_back(a[i++]);
+
 	add_member(CACHE_SET, result);
 	return result;
 }
 
 bool cantordb::is_disjoint(string set_a_name, string set_b_name) {
-	Set* intersection = set_intersection(set_a_name, set_b_name);
-	if(intersection == nullptr) {
+	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set not found.";
 		return false;
 	}
-	bool result = intersection->has_element.size() == 0;
-	return result;
+	return is_disjoint(set_index[set_a_name], set_index[set_b_name]);
 }
 
 bool cantordb::is_disjoint(Set* set_a, Set* set_b) {
-	Set* intersection = set_intersection(set_a, set_b);
-	if(intersection == nullptr) {
-		return false;
+	if(!set_a || !set_b) return false;
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) {
+			i++;
+		} else if(a[i] > b[j]) {
+			j++;
+		} else {
+			return false;
+		}
 	}
-	return intersection->has_element.size() == 0;
+	return true;
 }
 
 Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
@@ -406,27 +419,7 @@ Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
 		error_message = "Error: Set \"" + set_b_name + "\" not found.";
 		return nullptr;
 	}
-
-	Set* set_a_difference = set_difference(set_a_name, set_b_name);
-	Set* set_b_difference = set_difference(set_b_name, set_a_name);
-
-	Set* result = new Set();
-	result->set_name = set_a_name + " ⊕ " + set_b_name;
-
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a_difference->has_element.size(); i++) {
-		result->has_element.push_back(set_a_difference->has_element[i]);
-		unique_elems[set_a_difference->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b_difference->has_element.size(); i++) {
-		if(unique_elems.find(set_b_difference->has_element[i]->set_name) == unique_elems.end()) {
-			result->has_element.push_back(set_b_difference->has_element[i]);
-		}
-	}
-
-	add_member(CACHE_SET, result);
-	return result;
+	return symmetric_difference(set_index[set_a_name], set_index[set_b_name]);
 }
 
 Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
@@ -435,24 +428,24 @@ Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
 		error_message = "Error: Null set pointer.";
 		return nullptr;
 	}
-
-	Set* set_a_difference = set_difference(set_a, set_b);
-	Set* set_b_difference = set_difference(set_b, set_a);
-
 	Set* result = new Set();
 	result->set_name = set_a->set_name + " ⊕ " + set_b->set_name;
 
-	unordered_map<string, int> unique_elems;
-
-	for(int i = 0; i < (int)set_a_difference->has_element.size(); i++) {
-		result->has_element.push_back(set_a_difference->has_element[i]);
-		unique_elems[set_a_difference->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_b_difference->has_element.size(); i++) {
-		if(unique_elems.find(set_b_difference->has_element[i]->set_name) == unique_elems.end()) {
-			result->has_element.push_back(set_b_difference->has_element[i]);
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) {
+			result->has_element.push_back(a[i++]);
+		} else if(a[i] > b[j]) {
+			result->has_element.push_back(b[j++]);
+		} else {
+			i++;
+			j++;
 		}
 	}
+	while(i < (int)a.size()) result->has_element.push_back(a[i++]);
+	while(j < (int)b.size()) result->has_element.push_back(b[j++]);
 
 	add_member(CACHE_SET, result);
 	return result;
@@ -480,43 +473,33 @@ bool cantordb::is_subset(string set_a_name, string set_b_name) {
 		return false;
 	}
 
-	Set* super_set = set_index[set_b_name];
-	Set* sub_set = set_index[set_a_name];
-	unordered_map<string, int> super_elements;
-	if(super_set->has_element.empty() == true || super_set->has_element.empty() == true) {
-		return false;
-	}
-
-	for(int i = 0; i < (int)super_set->has_element.size(); i++) {
-		super_elements[super_set->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)sub_set->has_element.size(); i++) {
-		if(super_elements.find(sub_set->has_element[i]->set_name) == super_elements.end()) {
-			return false;
-		}
-	}
-	return true;
+	return is_subset(set_index[set_a_name], set_index[set_b_name]);
 }
+
 bool cantordb::is_subset(Set* set_a, Set* set_b) {
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
 		return false;
 	}
-	unordered_map<string, int> super_elements;
-	if(set_a->has_element.empty() == true || set_b->has_element.empty() == true) {
-		return false;
-	}
+	auto& sub = set_a->has_element;
+	auto& sup = set_b->has_element;
+	if(sub.empty()) return true;
+	if(sup.empty()) return false;
+	if(sub.size() > sup.size()) return false;
 
-	for(int i = 0; i < (int)set_b->has_element.size(); i++) {
-		super_elements[set_b->has_element[i]->set_name] = 1;
-	}
-	for(int i = 0; i < (int)set_a->has_element.size(); i++) {
-		if(super_elements.find(set_a->has_element[i]->set_name) == super_elements.end()) {
+	int i = 0, j = 0;
+	while(i < (int)sub.size() && j < (int)sup.size()) {
+		if(sub[i] == sup[j]) {
+			i++;
+			j++;
+		} else if(sub[i] > sup[j]) {
+			j++;
+		} else {
 			return false;
 		}
 	}
-	return true;
+	return i == (int)sub.size();
 }
 
 bool cantordb::is_superset(string set_a_name, string set_b_name) {
@@ -528,27 +511,38 @@ bool cantordb::is_superset(Set* set_a, Set* set_b) {
 }
 
 bool cantordb::is_equal(string set_a_name, string set_b_name) {
-	if(is_subset(set_a_name, set_b_name) && is_subset(set_b_name, set_a_name)) {
-		return true;
-	} else {
+	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set not found.";
 		return false;
 	}
+	return is_equal(set_index[set_a_name], set_index[set_b_name]);
 }
 
 bool cantordb::is_equal(Set* set_a, Set* set_b) {
-	return is_subset(set_a, set_b) && is_subset(set_b, set_a);
+	if(!set_a || !set_b) return false;
+	auto& a = set_a->has_element;
+	auto& b = set_b->has_element;
+	if(a.size() != b.size()) return false;
+	for(int i = 0; i < (int)a.size(); i++) {
+		if(a[i] != b[i]) return false;
+	}
+	return true;
 }
 
 bool cantordb::is_proper_subset(string set_a_name, string set_b_name) {
-	if(is_subset(set_a_name, set_b_name) && !is_equal(set_a_name, set_b_name)) {
-		return true;
-	} else {
+	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set not found.";
 		return false;
 	}
+	return is_proper_subset(set_index[set_a_name], set_index[set_b_name]);
 }
 
 bool cantordb::is_proper_subset(Set* set_a, Set* set_b) {
-	return is_subset(set_a, set_b) && !is_equal(set_a, set_b);
+	if(!set_a || !set_b) return false;
+	if(set_a->has_element.size() >= set_b->has_element.size()) return false;
+	return is_subset(set_a, set_b);
 }
 variant<bool, long, string, int, double> cantordb::get_property(string set_name, string key_name) {
 	if(set_index.find(set_name) == set_index.end()) {
@@ -1136,23 +1130,17 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, int
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = integer_property_index[property];
-
-	// Intersect parent's elements with sets that have this property, filter by value
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = integer_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_num[property] > value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_num[property] > value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1172,23 +1160,17 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, int 
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = integer_property_index[property];
-
-	// Intersect parent's elements with sets that have this property, filter by value
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = integer_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_num[property] < value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_num[property] < value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1208,23 +1190,17 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, int v
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = integer_property_index[property];
-
-	// Intersect parent's elements with sets that have this property, filter by value
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = integer_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_num[property] == value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_num[property] == value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1246,22 +1222,17 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, lon
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = long_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = long_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_long[property] > value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_long[property] > value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1281,22 +1252,17 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, long
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = long_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = long_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_long[property] < value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_long[property] < value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1316,22 +1282,17 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, long 
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = long_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = long_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_long[property] == value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_long[property] == value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1353,22 +1314,17 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, dou
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = double_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = double_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_decimal[property] > value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_decimal[property] > value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1388,22 +1344,17 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, doub
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = double_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = double_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_decimal[property] < value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_decimal[property] < value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1423,22 +1374,17 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, doubl
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = double_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = double_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_decimal[property] == value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_decimal[property] == value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1458,22 +1404,17 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, strin
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = string_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = string_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " == " + value + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_value[property] == value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_value[property] == value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1493,22 +1434,17 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, bool 
 	}
 
 	Set* parent = set_index[set_name];
-	vector<Set*>& indexed_sets = bool_property_index[property];
-
-	unordered_map<string, int> parent_elems;
-	for(auto& elem : parent->has_element) {
-		parent_elems[elem->set_name] = 1;
-	}
+	auto& a = parent->has_element;
+	auto& b = bool_property_index[property];
 
 	Set* result = new Set();
 	result->set_name = set_name + "[" + property + " == " + (value ? "true" : "false") + "]";
 
-	for(auto& s : indexed_sets) {
-		if(parent_elems.find(s->set_name) != parent_elems.end()) {
-			if(s->key_bool[property] == value) {
-				result->has_element.push_back(s);
-			}
-		}
+	int i = 0, j = 0;
+	while(i < (int)a.size() && j < (int)b.size()) {
+		if(a[i] < b[j]) { i++; }
+		else if(a[i] > b[j]) { j++; }
+		else { if(a[i]->key_bool[property] == value) result->has_element.push_back(a[i]); i++; j++; }
 	}
 
 	add_member(CACHE_SET, result);
@@ -1594,11 +1530,31 @@ cantordb* load_cantordb(const string& path) {
 	// Build property indexes
 	for (auto& [name, s] : db->set_index) {
 		if (name == UNIVERSAL_SET || name == CACHE_SET) continue;
-		for (auto& [key, val] : s->key_num)     db->integer_property_index[key].push_back(s);
-		for (auto& [key, val] : s->key_value)    db->string_property_index[key].push_back(s);
-		for (auto& [key, val] : s->key_decimal)  db->double_property_index[key].push_back(s);
-		for (auto& [key, val] : s->key_bool)     db->bool_property_index[key].push_back(s);
-		for (auto& [key, val] : s->key_long)     db->long_property_index[key].push_back(s);
+		for (auto& [key, val] : s->key_num) {
+			auto& vec = db->integer_property_index[key];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+		}
+		for (auto& [key, val] : s->key_value) {
+			auto& vec = db->string_property_index[key];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+		}
+		for (auto& [key, val] : s->key_decimal) {
+			auto& vec = db->double_property_index[key];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+		}
+		for (auto& [key, val] : s->key_bool) {
+			auto& vec = db->bool_property_index[key];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+		}
+		for (auto& [key, val] : s->key_long) {
+			auto& vec = db->long_property_index[key];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+		}
 	}
 
 	return db;

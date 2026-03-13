@@ -48,12 +48,20 @@ int main() {
 	}
 	cout << endl;
 
-	// --- Test 3: GET SETS ---
-	cout << "--- Test 3: GET SETS ---" << endl;
+	// --- Test 3: GET SETS OF ---
+	cout << "--- Test 3: GET SETS OF ---" << endl;
+	{
+		string result = parse_query(db, "GET SETS OF Dog");
+		check("returns Animals", result.find("Animals") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 3b: GET SETS (no OF) returns error ---
+	cout << "--- Test 3b: GET SETS (no OF) returns error ---" << endl;
 	{
 		string result = parse_query(db, "GET SETS");
-		check("returns Animals", result.find("Animals") != string::npos);
-		check("returns Dog", result.find("Dog") != string::npos);
+		check("returns error", result.find("Syntax Error") != string::npos);
 		cout << "  Result: " << result << endl;
 	}
 	cout << endl;
@@ -91,6 +99,243 @@ int main() {
 		string result = parse_query(db, "GET ELEMENTS OF Ghost");
 		check("returns empty for nonexistent set", result == "");
 		cout << "  Result: [" << result << "]" << endl;
+	}
+	cout << endl;
+
+	// --- Test 8: WHERE greater than ---
+	cout << "--- Test 8: WHERE greater than ---" << endl;
+	{
+		db.add_property("legs", 4, "Dog");
+		db.add_property("legs", 4, "Cat");
+		db.add_property("legs", 0, "Fish");
+
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs > 0");
+		check("WHERE > returns Dog", result.find("Dog") != string::npos);
+		check("WHERE > returns Cat", result.find("Cat") != string::npos);
+		check("WHERE > excludes Fish", result.find("Fish") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 9: WHERE equals ---
+	cout << "--- Test 9: WHERE equals ---" << endl;
+	{
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs = 0");
+		check("WHERE = returns Fish", result.find("Fish") != string::npos);
+		check("WHERE = excludes Dog", result.find("Dog") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 10: WHERE less than ---
+	cout << "--- Test 10: WHERE less than ---" << endl;
+	{
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs < 4");
+		check("WHERE < returns Fish", result.find("Fish") != string::npos);
+		check("WHERE < excludes Dog", result.find("Dog") == string::npos);
+		check("WHERE < excludes Cat", result.find("Cat") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 11: WHERE greater or equal ---
+	cout << "--- Test 11: WHERE greater or equal ---" << endl;
+	{
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs >= 4");
+		check("WHERE >= returns Dog", result.find("Dog") != string::npos);
+		check("WHERE >= returns Cat", result.find("Cat") != string::npos);
+		check("WHERE >= excludes Fish", result.find("Fish") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 12: WHERE less or equal ---
+	cout << "--- Test 12: WHERE less or equal ---" << endl;
+	{
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs <= 0");
+		check("WHERE <= returns Fish", result.find("Fish") != string::npos);
+		check("WHERE <= excludes Dog", result.find("Dog") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 13: WHERE string equals ---
+	cout << "--- Test 13: WHERE string equals ---" << endl;
+	{
+		db.add_property("sound", string("bark"), "Dog");
+		db.add_property("sound", string("meow"), "Cat");
+		db.add_property("sound", string("blub"), "Fish");
+
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE sound = bark");
+		check("WHERE string = returns Dog", result.find("Dog") != string::npos);
+		check("WHERE string = excludes Cat", result.find("Cat") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 14: WHERE bool equals ---
+	cout << "--- Test 14: WHERE bool equals ---" << endl;
+	{
+		db.add_property("domestic", true, "Dog");
+		db.add_property("domestic", true, "Cat");
+		db.add_property("domestic", false, "Fish");
+
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE domestic = true");
+		check("WHERE bool returns Dog", result.find("Dog") != string::npos);
+		check("WHERE bool returns Cat", result.find("Cat") != string::npos);
+		check("WHERE bool excludes Fish", result.find("Fish") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 15: WHERE error - no property ---
+	cout << "--- Test 15: WHERE error - no property ---" << endl;
+	{
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE");
+		check("missing property returns error", result.find("Syntax Error") != string::npos || result.find("Error") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 16: WHERE with set algebra ---
+	cout << "--- Test 16: WHERE with set algebra ---" << endl;
+	{
+		db.create_set("Pets");
+		db.create_set("Hamster");
+		db.add_property("legs", 4, "Hamster");
+		db.add_member("Pets", "Dog");
+		db.add_member("Pets", "Cat");
+		db.add_member("Pets", "Hamster");
+
+		string result = parse_query(db, "GET ELEMENTS OF Animals WHERE legs > 0 UNION Pets WHERE legs > 0");
+		check("set algebra + WHERE returns Dog", result.find("Dog") != string::npos);
+		check("set algebra + WHERE returns Cat", result.find("Cat") != string::npos);
+		check("set algebra + WHERE returns Hamster", result.find("Hamster") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 17: WHERE double property with integer literal ---
+	cout << "--- Test 17: WHERE double property with integer literal ---" << endl;
+	{
+		db.create_set("Metals");
+		db.create_set("Lithium");
+		db.create_set("Iron");
+		db.create_set("Copernicium");
+		db.add_property("atomic_mass", 6.94, "Lithium");
+		db.add_property("atomic_mass", 55.85, "Iron");
+		db.add_property("atomic_mass", 285.0, "Copernicium");
+		db.add_member("Metals", "Lithium");
+		db.add_member("Metals", "Iron");
+		db.add_member("Metals", "Copernicium");
+
+		string result = parse_query(db, "GET ELEMENTS OF Metals WHERE atomic_mass < 30");
+		check("WHERE double < int literal returns Lithium", result.find("Lithium") != string::npos);
+		check("WHERE double < int literal excludes Iron", result.find("Iron") == string::npos);
+		check("WHERE double < int literal excludes Copernicium", result.find("Copernicium") == string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 18: CREATE SETS ---
+	cout << "--- Test 17: CREATE SETS ---" << endl;
+	{
+		string result = parse_query(db, "CREATE SETS Bird Lizard");
+		check("CREATE returns success", result.find("Created") != string::npos);
+		check("Bird exists", db.set_index.find("Bird") != db.set_index.end());
+		check("Lizard exists", db.set_index.find("Lizard") != db.set_index.end());
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 19: TRASH SETS ---
+	cout << "--- Test 19: TRASH SETS ---" << endl;
+	{
+		string result = parse_query(db, "TRASH SETS Lizard");
+		check("TRASH returns success", result.find("Trashed") != string::npos);
+		check("Lizard removed from index", db.set_index.find("Lizard") == db.set_index.end());
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 20: ADD element TO set ---
+	cout << "--- Test 20: ADD element TO set ---" << endl;
+	{
+		db.create_set("Reptiles");
+		db.create_set("Snake");
+		string result = parse_query(db, "ADD Snake TO Reptiles");
+		check("ADD returns success", result.find("Added") != string::npos);
+		check("Snake is element of Reptiles", db.is_element("Snake", "Reptiles"));
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 21: REMOVE element FROM set ---
+	cout << "--- Test 21: REMOVE element FROM set ---" << endl;
+	{
+		string result = parse_query(db, "REMOVE Snake FROM Reptiles");
+		check("REMOVE returns success", result.find("Removed") != string::npos);
+		check("Snake no longer element", !db.is_element("Snake", "Reptiles"));
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 22: ADD PROPERTY with value TO set ---
+	cout << "--- Test 22: ADD PROPERTY with value ---" << endl;
+	{
+		string result = parse_query(db, "ADD PROPERTY speed = 5 TO Snake");
+		check("ADD PROPERTY returns success", result.find("Added property") != string::npos);
+		check("speed value is 5", db.get_property_safe_int("Snake", "speed") == 5);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 23: ADD PROPERTY without value (zero-init) ---
+	cout << "--- Test 23: ADD PROPERTY zero-init ---" << endl;
+	{
+		string result = parse_query(db, "ADD PROPERTY venom TO Snake");
+		check("ADD PROPERTY returns success", result.find("Added property") != string::npos);
+		check("venom value is 0", db.get_property_safe_int("Snake", "venom") == 0);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 24: ADD PROPERTY string value ---
+	cout << "--- Test 24: ADD PROPERTY string value ---" << endl;
+	{
+		string result = parse_query(db, "ADD PROPERTY color = green TO Snake");
+		check("ADD PROPERTY returns success", result.find("Added property") != string::npos);
+		check("color value is green", db.get_property_safe_string("Snake", "color") == "green");
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 25: ADD PROPERTY bool value ---
+	cout << "--- Test 25: ADD PROPERTY bool value ---" << endl;
+	{
+		string result = parse_query(db, "ADD PROPERTY venomous = true TO Snake");
+		check("ADD PROPERTY returns success", result.find("Added property") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 26: REMOVE PROPERTY FROM set ---
+	cout << "--- Test 26: REMOVE PROPERTY FROM set ---" << endl;
+	{
+		string result = parse_query(db, "REMOVE PROPERTY speed FROM Snake");
+		check("REMOVE PROPERTY returns success", result.find("Removed property") != string::npos);
+		cout << "  Result: " << result << endl;
+	}
+	cout << endl;
+
+	// --- Test 27: DELETE SETS (hard delete) ---
+	cout << "--- Test 27: DELETE SETS ---" << endl;
+	{
+		db.create_set("Temp");
+		string result = parse_query(db, "DELETE SETS Temp");
+		check("DELETE returns success", result.find("Deleted") != string::npos);
+		check("Temp removed from index", db.set_index.find("Temp") == db.set_index.end());
+		cout << "  Result: " << result << endl;
 	}
 	cout << endl;
 

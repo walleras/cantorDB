@@ -11,12 +11,25 @@ GET ELEMENTS OF Animals
 GET SETS OF Animals
 GET ALL SETS
 GET CACHE SETS
+GET CARDINALITY OF Animals
+GET PROPERTIES OF Dog
 IS Dog ELEMENT OF Animals
 IS Animals SET OF Dog
 IS Mammals SUBSET OF Animals
 IS Animals SUPERSET OF Mammals
+IS Mammals PROPER SUBSET OF Animals
+IS Animals EQUAL Mammals
+IS Animals DISJOINT Rocks
 GET ELEMENTS OF Animals UNION Mammals
 GET ELEMENTS OF Animals .DIFFERENCE. Mammals UNION Cats
+GET ELEMENTS OF Animals WHERE legs > 0
+CREATE SETS Bird Lizard
+ADD Dog TO Animals
+ADD PROPERTY speed = 5 TO Dog
+REMOVE Dog FROM Animals
+REMOVE PROPERTY speed FROM Dog
+TRASH SETS Bird
+DELETE SETS Lizard
 ```
 
 ### A note on philosophy
@@ -57,9 +70,43 @@ Dot notation is different. The dots sit directly next to the operator they are m
 
 **SUPERSET** — Used in IS queries. Checks whether the first set contains every element of the second set.
 
+**DISJOINT** — Used in IS queries. Checks whether two sets share no elements in common.
+
+**PROPER** — Modifier used before SUBSET. IS A PROPER SUBSET OF B checks that A is a subset of B but not equal to B.
+
+**EQUAL** — Used in IS queries. Checks whether two sets contain exactly the same elements.
+
 ### Connective
 
 **OF** — Structural keyword that separates the query type from the set algebra section. Every word must justify its existence; OF provides the bridge between what you are asking for and where you are looking.
+
+**TO** — Structural keyword used in ADD queries to specify the target set. ADD Dog TO Animals.
+
+**FROM** — Structural keyword used in REMOVE queries to specify the source set. REMOVE Dog FROM Animals.
+
+### Query types (continued)
+
+**CARDINALITY** — Used after GET. GET CARDINALITY OF \<Set\> returns the number of elements in a set. Works with WHERE and set algebra collapse.
+
+**PROPERTIES** — Used after GET. GET PROPERTIES OF \<Set\> returns the properties of a set.
+
+### CRUD operations
+
+**CREATE** — Creates new sets. Must be followed by SETS and one or more set names.
+
+**TRASH** — Soft-deletes sets (moves to trash). Must be followed by SETS and one or more set names.
+
+**DELETE** — Hard-deletes sets permanently. Must be followed by SETS and one or more set names.
+
+**ADD** — Adds an element to a set or a property to a set. ADD \<elem\> TO \<Set\> for membership, ADD PROPERTY \<key\> TO \<Set\> for properties.
+
+**REMOVE** — Removes an element from a set or a property from a set. REMOVE \<elem\> FROM \<Set\> for membership, REMOVE PROPERTY \<key\> FROM \<Set\> for properties.
+
+**PROPERTY** — Modifier keyword used with ADD and REMOVE to indicate property operations rather than membership operations.
+
+### Filtering
+
+**WHERE** — Filters elements by property value. Placed after a set name. Supports >, <, =, >=, <= for numeric types and = for string and bool types. WHERE is resolved before set algebra, so each side of a UNION/INTERSECTION can have its own WHERE clause.
 
 ### Set algebra operators
 
@@ -108,3 +155,47 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 `GET ELEMENTS OF <Set> SYMDIFF <Set>` — Lists elements in either set but not both.
 
 `GET ELEMENTS OF <Set> .UNION. <Set> INTERSECTION <Set>` — Union is evaluated first due to higher dot priority, then intersected with the third set.
+
+`IS <Set> DISJOINT <Set>` — Checks if two sets share no elements.
+
+`IS <Set> EQUAL <Set>` — Checks if two sets contain exactly the same elements.
+
+`IS <Set> PROPER SUBSET OF <Set>` — Checks if the first set is a strict subset of the second (subset but not equal).
+
+`GET CARDINALITY OF <Set>` — Returns the number of elements in a set.
+
+`GET CARDINALITY OF <Set> WHERE <key> > <value>` — Returns the count of elements matching a filter.
+
+`GET CARDINALITY OF <Set> UNION <Set>` — Returns the count of the union of two sets.
+
+`GET PROPERTIES OF <Set>` — Lists all properties of a set.
+
+`CREATE SETS <name> <name> ...` — Creates one or more new sets.
+
+`TRASH SETS <name> <name> ...` — Soft-deletes one or more sets (recoverable).
+
+`DELETE SETS <name> <name> ...` — Permanently deletes one or more sets.
+
+`ADD <elem> TO <Set>` — Adds an element to a set.
+
+`REMOVE <elem> FROM <Set>` — Removes an element from a set.
+
+`ADD PROPERTY <key> TO <Set>` — Adds a property to a set, zero-initialized.
+
+`ADD PROPERTY <key> = <value> TO <Set>` — Adds a property with a value. Type is inferred (number, string, or bool).
+
+`REMOVE PROPERTY <key> FROM <Set>` — Removes a property from a set.
+
+`GET ELEMENTS OF <Set> WHERE <key> > <value>` — Lists elements where property is greater than value.
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value>` — Lists elements where property equals value. Works for int, double, string, and bool.
+
+`GET ELEMENTS OF <Set> WHERE <key> >= <value>` — Lists elements where property is greater than or equal to value.
+
+`GET ELEMENTS OF <Set> WHERE <key> < <value>` — Lists elements where property is less than value.
+
+`GET ELEMENTS OF <Set> WHERE <key> <= <value>` — Lists elements where property is less than or equal to value.
+
+`GET ELEMENTS OF <Set> WHERE <key> > <value> UNION <Set> WHERE <key> > <value>` — WHERE clauses apply per-set before the UNION.
+
+`UPDATE PROPERTY <Property> FROM <Set> TO <value>` - Update a property on a set.

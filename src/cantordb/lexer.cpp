@@ -35,7 +35,28 @@ vector<Token> lexer(const string& query) {
 		if (isalpha(query[i])) {
 			string word = read_word(query, i);
 			tokens.push_back(classify_word(word));
+		} else if(isdigit(query[i])) {
+			tokens.push_back(handle_numbers(query, i));
+		} else if(query[i] == ',') {
+
 		} else {
+			if(query[i] == '>') {
+				if(i + 1 < (int)query.size() && query[i+1] == '=') {
+					i++;
+					tokens.push_back(Token {TOK_GOE, ">=", -1, nullptr});
+				} else {
+					tokens.push_back(Token {TOK_GREATER_THAN, ">", -1, nullptr});
+				}
+			} else if(query[i] == '<') {
+				if(i + 1 < (int)query.size() && query[i+1] == '=') {
+					i++;
+					tokens.push_back(Token {TOK_LOE, "<=", -1, nullptr});
+				} else {
+					tokens.push_back(Token {TOK_LESSER_THAN, "<", -1, nullptr});
+				}
+			} else if(query[i] == '=') {
+				tokens.push_back(Token {TOK_EQUALS, "=", -1, nullptr});
+			}
 			i++;
 		}
 	}
@@ -83,7 +104,50 @@ Token classify_word(string word) {
 		return Token {TOK_DIFF, word, 0, nullptr};
 	} else if(lower_word == "symdiff") {
 		return Token {TOK_SYMDIFF, word, 0, nullptr};
+	} else if(lower_word == "where") {
+		return Token {TOK_WHERE, word, -1, nullptr};
+	} else if(lower_word == "filter") {
+		return Token {TOK_FILTER, word, 0, nullptr};
+	} else if(lower_word == "create") {
+		return Token {TOK_CREATE, word, -1, nullptr};
+	} else if(lower_word == "trash") {
+		return Token {TOK_TRASH, word, -1, nullptr};
+	} else if(lower_word == "from") {
+		return Token {TOK_FROM, word, -1, nullptr};
+	} else if(lower_word == "to") {
+		return Token {TOK_TO, word, -1, nullptr};
+	} else if(lower_word == "add") {
+		return Token {TOK_ADD, word, -1, nullptr};
+	} else if(lower_word == "remove") {
+		return Token {TOK_REMOVE, word, -1, nullptr};
+	} else if(lower_word == "delete") {
+		return Token {TOK_DELETE, word, -1, nullptr};
+	} else if(lower_word == "property") {
+		return Token {TOK_PROPERTY, word, -1, nullptr};
+	} else if(lower_word == "cardinality") {
+		return Token {TOK_CARDINALITY, word, -1, nullptr};
+	} else if(lower_word == "disjoint") {
+		return Token {TOK_DISJOINT, word, -1, nullptr};
+	} else if(lower_word == "equal") {
+		return Token {TOK_EQUIV, word, -1, nullptr};
+	} else if(lower_word == "proper") {
+		return Token {TOK_PROPER, word, -1, nullptr};
+	} else if(lower_word == "complement") {
+		return Token {TOK_COMPLEMENT, word, -1, nullptr};
+	} else if(lower_word == "clear") {
+		return Token {TOK_CLEAR, word, -1, nullptr};
+	} else if(lower_word =="update") {
+		return Token {TOK_UPDATE, word, -1, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}
+}
+
+Token handle_numbers(const string& query, int& i) {
+	string num;
+	while(i < (int)query.size() && (isdigit(query[i]) || query[i] == '.')) {
+		num.push_back(query[i]);
+		i++;
+	}
+	return Token {TOK_NUM, num, -1, nullptr};
 }

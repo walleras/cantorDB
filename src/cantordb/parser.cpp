@@ -13,6 +13,8 @@ static QueryType parse_elem(vector<Token>& tokens, int& pos);
 static QueryType parse_set(vector<Token>& tokens, int& pos);
 static QueryType parse_all(vector<Token>& tokens, int& pos);
 static QueryType parse_cache(vector<Token>& tokens, int& pos);
+static QueryType parse_cardinality(vector<Token>& tokens, int& pos);
+static QueryType parse_properties(vector<Token>& tokens, int& pos);
 static void element_collapse_pass(cantordb& db, vector<Token>& tokens);
 static Token error_token(const string& message);
 static Token union_operation(cantordb& db, vector<Token>& tokens, int operator_pos);
@@ -24,6 +26,20 @@ static string is_element_query(cantordb& db, vector<Token>& tokens, int& pos, st
 static string is_set_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_subset_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_disjoint_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_proper_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static string is_equiv_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static void where_collapse_pass(cantordb& db, vector<Token>& tokens);
+static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos);
+static string create_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string trash_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string delete_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string add_elem(cantordb& db, vector<Token>& tokens, int& pos);
+static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string create_property_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string update_property_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string remove_elem(cantordb& db, vector<Token>& tokens, int& pos);
+static string remove_property_query(cantordb& db, vector<Token>& tokens, int& pos);
 
 string parse_query(cantordb& db, const string& query) {
 	vector<Token> tokens = lexer(query);
@@ -32,6 +48,13 @@ string parse_query(cantordb& db, const string& query) {
 	PEC = PE_NONE;
 	parser_error = "";
 	db.error_message = "";
+
+	where_collapse_pass(db, tokens);
+
+	// Check if collapse pass produced an error
+	if(tokens.size() == 1 && tokens[0].type == TOK_EOF && !tokens[0].value.empty()) {
+		return tokens[0].value;
+	}
 
 	element_collapse_pass(db, tokens);
 
@@ -62,6 +85,39 @@ string parse_query(cantordb& db, const string& query) {
 		return db.list_sets(set_name);
 	}
 
+	if(type == PROPERTIES) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		return db.list_properties(tokens[pos].value);
+	}
+
+	if(type == CARDINALITY) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		string set_name = tokens[pos].value;
+		int card = db.get_cardinality(set_name);
+		if(!db.error_message.empty()) return db.error_message;
+		return to_string(card);
+	}
+
+	if(type == CREATE) {
+		return create_query(db, tokens, pos);
+	}
+
+	if(type == CREATE_PROPERTY) {
+		return create_property_query(db, tokens, pos);
+	}
+
+	if(type == UPDATE) {
+		return update_property_query(db, tokens, pos);
+	}
+
+	if(type == DELETE) {
+		return trash_query(db, tokens, pos);
+	}
+
 	if(type == ALL_SETS) {
 		return db.list_all_sets();
 	}
@@ -74,7 +130,487 @@ string parse_query(cantordb& db, const string& query) {
 		return db.list_cached_sets();
 	}
 
+	if(type == DELETE_HARSH) {
+		return delete_query(db, tokens, pos);
+	}
+
+	if(type == ADD_ELEM) {
+		return add_elem(db, tokens, pos);
+	}
+
+	if(type == ADD_PROPERTY) {
+		return add_property_query(db, tokens, pos);
+	}
+
+	if(type == REMOVE_ELEM) {
+		return remove_elem(db, tokens, pos);
+	}
+
+	if(type == REMOVE_PROPERTY) {
+		return remove_property_query(db, tokens, pos);
+	}
+
 	return "Unknown query type.";
+}
+
+static void where_collapse_pass(cantordb& db, vector<Token>& tokens) {
+	for(int i = 0; i < (int)tokens.size(); i++) {
+		if(tokens[i].type == TOK_WHERE) {
+			if(i < 1 || tokens[i - 1].type != TOK_IDENTIFIER) {
+				tokens.clear();
+				tokens.push_back(error_token("Syntax Error: WHERE must follow a set name."));
+				return;
+			}
+			Set* result = handle_where(db, tokens, i);
+			if(!result) {
+				tokens.clear();
+				tokens.push_back(error_token(db.error_message));
+				return;
+			}
+			// Replace the set token with the filtered result
+			tokens[i - 1].value = result->set_name;
+			tokens[i - 1].result = result;
+			// Erase from WHERE through value: [i] WHERE [i+1] property [i+2] comparator [i+3] value
+			int erase_end = i + 4;
+			if(erase_end > (int)tokens.size()) erase_end = (int)tokens.size();
+			tokens.erase(tokens.begin() + i, tokens.begin() + erase_end);
+			i--; // re-check in case of chained WHERE
+		}
+	}
+}
+
+static Set* dispatch_where_int(cantordb& db, const string& set_name, const string& property, TokenType comparator, int val) {
+	switch(comparator) {
+		case TOK_GREATER_THAN: return db.where_elements_greater_than(set_name, property, val);
+		case TOK_LESSER_THAN:  return db.where_elements_lesser_than(set_name, property, val);
+		case TOK_EQUALS:       return db.where_elements_equal_than(set_name, property, val);
+		case TOK_GOE: {
+			Set* gt = db.where_elements_greater_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!gt || !eq) return nullptr;
+			return db.set_union(gt, eq);
+		}
+		case TOK_LOE: {
+			Set* lt = db.where_elements_lesser_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!lt || !eq) return nullptr;
+			return db.set_union(lt, eq);
+		}
+		default: return nullptr;
+	}
+}
+
+static Set* dispatch_where_double(cantordb& db, const string& set_name, const string& property, TokenType comparator, double val) {
+	switch(comparator) {
+		case TOK_GREATER_THAN: return db.where_elements_greater_than(set_name, property, val);
+		case TOK_LESSER_THAN:  return db.where_elements_lesser_than(set_name, property, val);
+		case TOK_EQUALS:       return db.where_elements_equal_than(set_name, property, val);
+		case TOK_GOE: {
+			Set* gt = db.where_elements_greater_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!gt || !eq) return nullptr;
+			return db.set_union(gt, eq);
+		}
+		case TOK_LOE: {
+			Set* lt = db.where_elements_lesser_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!lt || !eq) return nullptr;
+			return db.set_union(lt, eq);
+		}
+		default: return nullptr;
+	}
+}
+
+static Set* dispatch_where_long(cantordb& db, const string& set_name, const string& property, TokenType comparator, long val) {
+	switch(comparator) {
+		case TOK_GREATER_THAN: return db.where_elements_greater_than(set_name, property, val);
+		case TOK_LESSER_THAN:  return db.where_elements_lesser_than(set_name, property, val);
+		case TOK_EQUALS:       return db.where_elements_equal_than(set_name, property, val);
+		case TOK_GOE: {
+			Set* gt = db.where_elements_greater_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!gt || !eq) return nullptr;
+			return db.set_union(gt, eq);
+		}
+		case TOK_LOE: {
+			Set* lt = db.where_elements_lesser_than(set_name, property, val);
+			Set* eq = db.where_elements_equal_than(set_name, property, val);
+			if(!lt || !eq) return nullptr;
+			return db.set_union(lt, eq);
+		}
+		default: return nullptr;
+	}
+}
+
+static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos) {
+	string set_name = tokens[where_pos - 1].value;
+	int p = where_pos + 1;
+
+	// Expect: property comparator value
+	if(p >= (int)tokens.size() || tokens[p].type != TOK_IDENTIFIER) {
+		db.error_message = "Syntax Error: Expected property name after WHERE.";
+		return nullptr;
+	}
+	string property = tokens[p].value;
+	p++;
+
+	if(p >= (int)tokens.size()) {
+		db.error_message = "Syntax Error: Expected comparator after property.";
+		return nullptr;
+	}
+	TokenType comparator = tokens[p].type;
+	if(comparator != TOK_GREATER_THAN && comparator != TOK_LESSER_THAN &&
+	   comparator != TOK_EQUALS && comparator != TOK_GOE && comparator != TOK_LOE) {
+		db.error_message = "Syntax Error: Expected >, <, =, >=, or <= after property.";
+		return nullptr;
+	}
+	p++;
+
+	if(p >= (int)tokens.size() || (tokens[p].type != TOK_NUM && tokens[p].type != TOK_IDENTIFIER)) {
+		db.error_message = "Syntax Error: Expected value after comparator.";
+		return nullptr;
+	}
+
+	// String/bool equality
+	if(tokens[p].type == TOK_IDENTIFIER) {
+		if(comparator != TOK_EQUALS) {
+			db.error_message = "Syntax Error: Only = is supported for string and bool comparisons.";
+			return nullptr;
+		}
+		string val = tokens[p].value;
+		if(val == "true" || val == "True" || val == "TRUE") {
+			return db.where_elements_equal_than(set_name, property, true);
+		} else if(val == "false" || val == "False" || val == "FALSE") {
+			return db.where_elements_equal_than(set_name, property, false);
+		} else {
+			return db.where_elements_equal_than(set_name, property, val);
+		}
+	}
+
+	// Numeric value — dispatch based on which property index actually holds this property,
+	// not based on how the user wrote the literal
+	double num_val = stod(tokens[p].value);
+
+	if(db.integer_property_index.find(property) != db.integer_property_index.end()) {
+		return dispatch_where_int(db, set_name, property, comparator, (int)num_val);
+	}
+	if(db.double_property_index.find(property) != db.double_property_index.end()) {
+		return dispatch_where_double(db, set_name, property, comparator, num_val);
+	}
+	if(db.long_property_index.find(property) != db.long_property_index.end()) {
+		return dispatch_where_long(db, set_name, property, comparator, (long)num_val);
+	}
+
+	db.error_message = "Error: No numeric property \"" + property + "\" found in any index.";
+	return nullptr;
+}
+
+static string create_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_SET) {
+		return "Syntax Error: CREATE must be followed by SETS.";
+	}
+	pos++;
+	int count = 0;
+	while(tokens[pos].type == TOK_IDENTIFIER) {
+		if(!db.create_set(tokens[pos].value)) {
+			return db.error_message;
+		}
+		count++;
+		pos++;
+	}
+	if(count == 0) {
+		return "Syntax Error: Expected at least one set name after CREATE SETS.";
+	}
+	return "Created " + to_string(count) + " set" + (count > 1 ? "s" : "") + ".";
+}
+
+static string trash_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_SET) {
+		return "Syntax Error: TRASH must be followed by SETS.";
+	}
+	pos++;
+	int count = 0;
+	while(tokens[pos].type == TOK_IDENTIFIER) {
+		if(!db.delete_set(tokens[pos].value, true)) {
+			return db.error_message;
+		}
+		count++;
+		pos++;
+	}
+	if(count == 0) {
+		return "Syntax Error: Expected at least one set name after TRASH SETS.";
+	}
+	return "Trashed " + to_string(count) + " set" + (count > 1 ? "s" : "") + ".";
+}
+
+static string delete_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_SET) {
+		return "Syntax Error: DELETE must be followed by SETS.";
+	}
+	pos++;
+	int count = 0;
+	while(tokens[pos].type == TOK_IDENTIFIER) {
+		if(!db.delete_set(tokens[pos].value, false)) {
+			return db.error_message;
+		}
+		count++;
+		pos++;
+	}
+	if(count == 0) {
+		return "Syntax Error: Expected at least one set name after DELETE SETS.";
+	}
+	return "Deleted " + to_string(count) + " set" + (count > 1 ? "s" : "") + ".";
+}
+
+// ADD Dog TO Animals
+static string add_elem(cantordb& db, vector<Token>& tokens, int& pos) {
+	// pos is at the element name (parse_header consumed ADD, saw IDENTIFIER)
+	string elem_name = tokens[pos].value;
+	pos++;
+	if(tokens[pos].type != TOK_TO) {
+		return "Syntax Error: Expected TO after element name.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after TO.";
+	}
+	string set_name = tokens[pos].value;
+	if(!db.add_member(set_name, elem_name)) {
+		return db.error_message;
+	}
+	return "Added " + elem_name + " to " + set_name + ".";
+}
+
+// UPDATE PROPERTY key FROM Set TO value
+static string update_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected property name after PROPERTY.";
+	}
+	string key = tokens[pos].value;
+	pos++;
+
+	if(tokens[pos].type != TOK_FROM) {
+		return "Syntax Error: Expected FROM after property name.";
+	}
+	pos++;
+
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after FROM.";
+	}
+	string set_name = tokens[pos].value;
+	pos++;
+
+	if(tokens[pos].type != TOK_TO) {
+		return "Syntax Error: Expected TO after set name.";
+	}
+	pos++;
+
+	// Check that the set exists
+	if(db.set_index.find(set_name) == db.set_index.end()) {
+		return "Error: Set \"" + set_name + "\" not found.";
+	}
+
+	// Check that the property exists on the set
+	Set* s = db.set_index[set_name];
+	if(s->key_index.find(key) == s->key_index.end()) {
+		return "Error: Key \"" + key + "\" not found in set \"" + set_name + "\".";
+	}
+
+	int type_tag = s->key_index[key];
+
+	// Read the value token
+	if(tokens[pos].type != TOK_NUM && tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected value after TO.";
+	}
+
+	// Dispatch by the existing property type
+	switch(type_tag) {
+		case 0: { // int
+			if(tokens[pos].type != TOK_NUM) {
+				return "Syntax Error: Property \"" + key + "\" is int type, expected a number.";
+			}
+			int val = (int)stod(tokens[pos].value);
+			if(!db.update_property(set_name, key, val)) {
+				return db.error_message;
+			}
+			break;
+		}
+		case 1: { // string
+			if(tokens[pos].type != TOK_IDENTIFIER) {
+				return "Syntax Error: Property \"" + key + "\" is string type, expected a string value.";
+			}
+			string val = tokens[pos].value;
+			if(!db.update_property(set_name, key, val)) {
+				return db.error_message;
+			}
+			break;
+		}
+		case 2: { // double
+			if(tokens[pos].type != TOK_NUM) {
+				return "Syntax Error: Property \"" + key + "\" is double type, expected a number.";
+			}
+			double val = stod(tokens[pos].value);
+			if(!db.update_property(set_name, key, val)) {
+				return db.error_message;
+			}
+			break;
+		}
+		case 3: { // bool
+			if(tokens[pos].type != TOK_IDENTIFIER) {
+				return "Syntax Error: Property \"" + key + "\" is bool type, expected true or false.";
+			}
+			string v = tokens[pos].value;
+			bool val;
+			if(v == "true" || v == "True" || v == "TRUE") {
+				val = true;
+			} else if(v == "false" || v == "False" || v == "FALSE") {
+				val = false;
+			} else {
+				return "Syntax Error: Property \"" + key + "\" is bool type, expected true or false.";
+			}
+			if(!db.update_property(set_name, key, val)) {
+				return db.error_message;
+			}
+			break;
+		}
+		case 4: { // long
+			if(tokens[pos].type != TOK_NUM) {
+				return "Syntax Error: Property \"" + key + "\" is long type, expected a number.";
+			}
+			long val = stol(tokens[pos].value);
+			if(!db.update_property(set_name, key, val)) {
+				return db.error_message;
+			}
+			break;
+		}
+		default:
+			return "Error: Unknown property type for key \"" + key + "\".";
+	}
+
+	return "Updated property " + key + " on " + set_name + ".";
+}
+
+static string create_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	return "Error: CREATE PROPERTY not yet implemented (needs type tokens in lexer).";
+}
+
+// ADD PROPERTY <key> TO <set>            — zero-initializes as int 0
+// ADD PROPERTY <key> = <value> TO <set>  — infers type from value
+static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected property name after PROPERTY.";
+	}
+	string key = tokens[pos].value;
+	pos++;
+
+	// Check for optional = value
+	bool has_value = false;
+	string str_val;
+	double num_val = 0;
+	bool is_num = false;
+	bool is_bool = false;
+	bool bool_val = false;
+
+	if(tokens[pos].type == TOK_EQUALS) {
+		has_value = true;
+		pos++;
+		if(tokens[pos].type == TOK_NUM) {
+			num_val = stod(tokens[pos].value);
+			is_num = true;
+			pos++;
+		} else if(tokens[pos].type == TOK_IDENTIFIER) {
+			str_val = tokens[pos].value;
+			if(str_val == "true" || str_val == "True" || str_val == "TRUE") {
+				is_bool = true;
+				bool_val = true;
+			} else if(str_val == "false" || str_val == "False" || str_val == "FALSE") {
+				is_bool = true;
+				bool_val = false;
+			}
+			pos++;
+		} else {
+			return "Syntax Error: Expected value after =.";
+		}
+	}
+
+	if(tokens[pos].type != TOK_TO) {
+		return "Syntax Error: Expected TO after property value.";
+	}
+	pos++;
+
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after TO.";
+	}
+	string set_name = tokens[pos].value;
+
+	if(!has_value) {
+		// Zero-initialize as int
+		if(!db.add_property(key, 0, set_name)) {
+			return db.error_message;
+		}
+	} else if(is_bool) {
+		if(!db.add_property(key, bool_val, set_name)) {
+			return db.error_message;
+		}
+	} else if(is_num) {
+		// Check if it has a decimal point
+		if(tokens[pos - 2].value.find('.') != string::npos) {
+			if(!db.add_property(key, num_val, set_name)) {
+				return db.error_message;
+			}
+		} else {
+			if(!db.add_property(key, (int)num_val, set_name)) {
+				return db.error_message;
+			}
+		}
+	} else {
+		if(!db.add_property(key, str_val, set_name)) {
+			return db.error_message;
+		}
+	}
+
+	return "Added property " + key + " to " + set_name + ".";
+}
+
+// REMOVE Dog FROM Animals
+static string remove_elem(cantordb& db, vector<Token>& tokens, int& pos) {
+	// pos is at the element name (parse_header consumed REMOVE, saw IDENTIFIER)
+	string elem_name = tokens[pos].value;
+	pos++;
+	if(tokens[pos].type != TOK_FROM) {
+		return "Syntax Error: Expected FROM after element name.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after FROM.";
+	}
+	string set_name = tokens[pos].value;
+	if(!db.remove_member(set_name, elem_name)) {
+		return db.error_message;
+	}
+	return "Removed " + elem_name + " from " + set_name + ".";
+}
+
+// REMOVE PROPERTY name FROM Dog
+static string remove_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	// pos is at the key name (parse_header consumed REMOVE PROPERTY)
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected property name after PROPERTY.";
+	}
+	string key = tokens[pos].value;
+	pos++;
+	if(tokens[pos].type != TOK_FROM) {
+		return "Syntax Error: Expected FROM after property name.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after FROM.";
+	}
+	string set_name = tokens[pos].value;
+	if(!db.delete_property(set_name, key)) {
+		return db.error_message;
+	}
+	return "Removed property " + key + " from " + set_name + ".";
 }
 
 static QueryType parse_header(vector<Token>& tokens, int& pos) {
@@ -86,8 +622,52 @@ static QueryType parse_header(vector<Token>& tokens, int& pos) {
 		pos++;
 		return IS;
 	}
+	if(tokens[pos].type == TOK_CREATE) {
+		pos++;
+		if(tokens[pos].type == TOK_PROPERTY) {
+			pos++;
+			return CREATE_PROPERTY;
+		}
+		return CREATE;
+	}
+	if(tokens[pos].type == TOK_TRASH) {
+		pos++;
+		return DELETE;
+	}
+	if(tokens[pos].type == TOK_DELETE) {
+		pos++;
+		return DELETE_HARSH;
+	}
+	if(tokens[pos].type == TOK_ADD) {
+		pos++;
+		if(tokens[pos].type == TOK_IDENTIFIER) {
+			return ADD_ELEM;
+		} else if (tokens[pos].type == TOK_PROPERTY) {
+			pos++;
+			return ADD_PROPERTY;
+		}
+	}
+	if(tokens[pos].type == TOK_REMOVE) {
+		pos++;
+		if(tokens[pos].type == TOK_IDENTIFIER) {
+			return REMOVE_ELEM;
+		} else if (tokens[pos].type == TOK_PROPERTY) {
+			pos++;
+			return REMOVE_PROPERTY;
+		}
+	}
+	if(tokens[pos].type == TOK_UPDATE) {
+		pos++;
+		if(tokens[pos].type == TOK_PROPERTY) {
+			pos++;
+			return UPDATE;
+		}
+		PEC = PE_SYNTAX;
+		parser_error = "Syntax Error: UPDATE must be followed by PROPERTY.";
+		return ERR;
+	}
 	PEC = PE_NO_GET;
-	parser_error = "Syntax Error: Query must start with GET or IS.";
+	parser_error = "Syntax Error: Query must start with a valid operation.";
 	return ERR;
 }
 
@@ -105,6 +685,12 @@ static QueryType parse_query_type(vector<Token>& tokens, int& pos) {
 		case TOK_CACHE:
 			pos++;
 			return parse_cache(tokens, pos);
+		case TOK_CARDINALITY:
+			pos++;
+			return parse_cardinality(tokens, pos);
+		case TOK_PROPERTY:
+			pos++;
+			return parse_properties(tokens, pos);
 		default:
 			PEC = PE_SYNTAX;
 			parser_error = "Syntax Error: GET must be followed by ELEMENTS, SETS, ALL, or CACHE.";
@@ -119,6 +705,26 @@ static QueryType parse_elem(vector<Token>& tokens, int& pos) {
 	}
 	PEC = PE_SYNTAX;
 	parser_error = "Syntax Error: ELEMENTS must be followed by OF.";
+	return ERR;
+}
+
+static QueryType parse_properties(vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type == TOK_OF) {
+		pos++;
+		return PROPERTIES;
+	}
+	PEC = PE_SYNTAX;
+	parser_error = "Syntax Error: PROPERTIES must be followed by OF.";
+	return ERR;
+}
+
+static QueryType parse_cardinality(vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type == TOK_OF) {
+		pos++;
+		return CARDINALITY;
+	}
+	PEC = PE_SYNTAX;
+	parser_error = "Syntax Error: CARDINALITY must be followed by OF.";
 	return ERR;
 }
 
@@ -195,7 +801,6 @@ static void element_collapse_pass(cantordb& db, vector<Token>& tokens) {
 			return;
 		}
 
-		// Replace [actual-1, actual, actual+1] with the result token
 		tokens.erase(tokens.begin() + actual - 1, tokens.begin() + actual + 2);
 		tokens.insert(tokens.begin() + actual - 1, result);
 	}
@@ -279,8 +884,17 @@ static string is_query(cantordb& db, vector<Token>& tokens, int& pos) {
 	} else if (tokens[pos].type == TOK_SUPER) {
 		pos++;
 		return is_superset_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_DISJOINT) {
+		pos++;
+		return is_disjoint_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_PROPER) {
+		pos++;
+		return is_proper_query(db, tokens, pos, iset);
+	} else if (tokens[pos].type == TOK_EQUIV) {
+		pos++;
+		return is_equiv_query(db, tokens, pos, iset);
 	} else {
-		return "Syntax Error: Expected ELEMENT, SET, SUBSET, or SUPERSET.";
+		return "Syntax Error: Expected ELEMENT, SET, SUBSET, SUPERSET, DISJOINT, PROPER, or EQUIVALENT.";
 	}
 }
 
@@ -344,6 +958,53 @@ static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, s
 		return "Syntax Error: Expected set name after OF.";
 	}
 	if(db.is_superset(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_disjoint_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after DISJOINT.";
+	}
+	if(db.is_disjoint(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_proper_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_SUB) {
+		return "Syntax Error: Expected SUBSET after PROPER.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_OF) {
+		return "Syntax Error: Expected OF after PROPER SUBSET.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after OF.";
+	}
+	if(db.is_proper_subset(iset, tokens[pos].value)) {
+		return "Yes";
+	} else if(!db.error_message.empty()) {
+		return db.error_message;
+	} else {
+		return "No";
+	}
+}
+
+static string is_equiv_query(cantordb& db, vector<Token>& tokens, int& pos, string iset) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected set name after EQUIVALENT.";
+	}
+	if(db.is_equal(iset, tokens[pos].value)) {
 		return "Yes";
 	} else if(!db.error_message.empty()) {
 		return db.error_message;

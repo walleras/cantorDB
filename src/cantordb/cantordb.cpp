@@ -50,10 +50,109 @@ bool cantordb::create_set(string set_name, bool gen_set) {
 	return true;
 }
 
+bool cantordb::create_property(string property_name, string type) {
+	if(property_types.find(property_name) != property_types.end()) {
+		EC = ER_KEY_EX;
+		error_message = "Error: Property \"" + property_name + "\" already registered.";
+		return false;
+	}
+	if(type == "int" || type == "integer") {
+		property_types[property_name] = INTEGER;
+	} else if(type == "string") {
+		property_types[property_name] = STRING;
+	} else if(type == "double") {
+		property_types[property_name] = DOUBLE;
+	} else if(type == "bool") {
+		property_types[property_name] = BOOL;
+	} else if(type == "long") {
+		property_types[property_name] = LONG;
+	} else {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Unknown type \"" + type + "\". Use int, string, double, bool, or long.";
+		return false;
+	}
+	return true;
+}
+
+bool cantordb::add_property(string property_name, string set_name) {
+	if(set_index.find(set_name) == set_index.end()) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return false;
+	}
+	if(set_index[set_name]->key_index.find(property_name) != set_index[set_name]->key_index.end()) {
+		EC = ER_KEY_EX;
+		error_message = "Error: Key \"" + property_name + "\" already exists as a property on this set.";
+		return false;
+	}
+	if(property_types.find(property_name) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + property_name + "\" has not been created. Use create_property first.";
+		return false;
+	}
+
+	Set* s = set_index[set_name];
+	TYPE t = property_types[property_name];
+
+	switch(t) {
+		case INTEGER: {
+			auto& vec = integer_property_index[property_name];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+			s->key_num[property_name] = 0;
+			s->key_index[property_name] = 0;
+			break;
+		}
+		case STRING: {
+			auto& vec = string_property_index[property_name];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+			s->key_value[property_name] = "";
+			s->key_index[property_name] = 1;
+			break;
+		}
+		case DOUBLE: {
+			auto& vec = double_property_index[property_name];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+			s->key_decimal[property_name] = 0.0;
+			s->key_index[property_name] = 2;
+			break;
+		}
+		case BOOL: {
+			auto& vec = bool_property_index[property_name];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+			s->key_bool[property_name] = false;
+			s->key_index[property_name] = 3;
+			break;
+		}
+		case LONG: {
+			auto& vec = long_property_index[property_name];
+			auto pos = std::lower_bound(vec.begin(), vec.end(), s);
+			vec.insert(pos, s);
+			s->key_long[property_name] = 0L;
+			s->key_index[property_name] = 4;
+			break;
+		}
+	}
+	return true;
+}
+
 bool cantordb::add_property(string key, int value, string set_name) {
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return false;
+	}
+	if(property_types.find(key) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + key + "\" has not been created. Use create_property first.";
+		return false;
+	}
+	if(property_types[key] != INTEGER) {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Property \"" + key + "\" is not int type.";
 		return false;
 	}
 	if(set_index[set_name]->key_index.find(key) != set_index[set_name]->key_index.end()) {
@@ -78,6 +177,16 @@ bool cantordb::add_property(string key, string value, string set_name) {
 		error_message = "Error: Set \"" + set_name + "\" not found.";
 		return false;
 	}
+	if(property_types.find(key) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + key + "\" has not been created. Use create_property first.";
+		return false;
+	}
+	if(property_types[key] != STRING) {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Property \"" + key + "\" is not string type.";
+		return false;
+	}
 	if(set_index[set_name]->key_index.find(key) != set_index[set_name]->key_index.end()) {
 		EC = ER_KEY_EX;
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
@@ -98,6 +207,16 @@ bool cantordb::add_property(string key, double value, string set_name) {
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return false;
+	}
+	if(property_types.find(key) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + key + "\" has not been created. Use create_property first.";
+		return false;
+	}
+	if(property_types[key] != DOUBLE) {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Property \"" + key + "\" is not double type.";
 		return false;
 	}
 	if(set_index[set_name]->key_index.find(key) != set_index[set_name]->key_index.end()) {
@@ -122,6 +241,16 @@ bool cantordb::add_property(string key, bool value, string set_name) {
 		error_message = "Error: Set \"" + set_name + "\" not found.";
 		return false;
 	}
+	if(property_types.find(key) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + key + "\" has not been created. Use create_property first.";
+		return false;
+	}
+	if(property_types[key] != BOOL) {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Property \"" + key + "\" is not bool type.";
+		return false;
+	}
 	if(set_index[set_name]->key_index.find(key) != set_index[set_name]->key_index.end()) {
 		EC = ER_KEY_EX;
 		error_message = "Error: Key \"" + key + "\" already exists as a property.";
@@ -142,6 +271,16 @@ bool cantordb::add_property(string key, long value, string set_name) {
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
+		return false;
+	}
+	if(property_types.find(key) == property_types.end()) {
+		EC = ER_KEY_NOT_FOUND;
+		error_message = "Error: Property \"" + key + "\" has not been created. Use create_property first.";
+		return false;
+	}
+	if(property_types[key] != LONG) {
+		EC = ER_KEY_WRONG_TYPE;
+		error_message = "Error: Property \"" + key + "\" is not long type.";
 		return false;
 	}
 	if(set_index[set_name]->key_index.find(key) != set_index[set_name]->key_index.end()) {
@@ -1037,12 +1176,9 @@ bool cantordb::is_element(string set_a_name, string set_b_name) {
 		error_message = "Error: Set \"" + set_b_name + "\" not found.";
 		return false;
 	}
-	for(int i = 0; i < (int)set_index[set_b_name]->has_element.size(); i++) {
-		if(set_index[set_a_name] == set_index[set_b_name]->has_element[i]) {
-			return true;
-		}
-	}
-	return false;
+	Set* a = set_index[set_a_name];
+	auto& elems = set_index[set_b_name]->has_element;
+	return std::binary_search(elems.begin(), elems.end(), a);
 }
 
 // ---- Binary serialization helpers ----

@@ -40,6 +40,8 @@ static string create_property_query(cantordb& db, vector<Token>& tokens, int& po
 static string update_property_query(cantordb& db, vector<Token>& tokens, int& pos);
 static string remove_elem(cantordb& db, vector<Token>& tokens, int& pos);
 static string remove_property_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string rename_set_query(cantordb& db, vector<Token>& tokens, int& pos);
+static string rename_property_query(cantordb& db, vector<Token>& tokens, int& pos);
 
 string parse_query(cantordb& db, const string& query) {
 	vector<Token> tokens = lexer(query);
@@ -112,6 +114,14 @@ string parse_query(cantordb& db, const string& query) {
 
 	if(type == UPDATE) {
 		return update_property_query(db, tokens, pos);
+	}
+
+	if(type == RENAME_SET) {
+		return rename_set_query(db, tokens, pos);
+	}
+
+	if(type == RENAME_PROPERTY) {
+		return rename_property_query(db, tokens, pos);
 	}
 
 	if(type == DELETE) {
@@ -324,6 +334,31 @@ static string create_query(cantordb& db, vector<Token>& tokens, int& pos) {
 	return "Created " + to_string(count) + " set" + (count > 1 ? "s" : "") + ".";
 }
 
+static string rename_set_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: RENAME SET must be followed by a set name.";
+	}
+	string old_name = tokens[pos].value;
+	pos++;
+	if(tokens[pos].type != TOK_TO) {
+		return "Syntax Error: Expected TO after set name in RENAME SET.";
+	}
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected new set name after TO.";
+	}
+	string new_name = tokens[pos].value;
+	pos++;
+	if(db.rename_set(old_name, new_name)) {
+		return "Renamed set \"" + old_name + "\" to \"" + new_name + "\".";
+	}
+	return db.error_message;
+}
+
+static string rename_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+	return "Not yet implemented.";
+}
+
 static string trash_query(cantordb& db, vector<Token>& tokens, int& pos) {
 	if(tokens[pos].type != TOK_SET) {
 		return "Syntax Error: TRASH must be followed by SETS.";
@@ -491,7 +526,21 @@ static string update_property_query(cantordb& db, vector<Token>& tokens, int& po
 }
 
 static string create_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
-	return "Error: CREATE PROPERTY not yet implemented (needs type tokens in lexer).";
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected property name after CREATE PROPERTY.";
+	}
+	string prop_name = tokens[pos].value;
+	pos++;
+	if(tokens[pos].type != TOK_IDENTIFIER) {
+		return "Syntax Error: Expected type (int, string, double, bool, long) after property name.";
+	}
+	string type_name = tokens[pos].value;
+	transform(type_name.begin(), type_name.end(), type_name.begin(), ::tolower);
+	pos++;
+	if(db.create_property(prop_name, type_name)) {
+		return "Created property \"" + prop_name + "\" with type " + type_name + ".";
+	}
+	return db.error_message;
 }
 
 // ADD PROPERTY <key> TO <set>            — zero-initializes as int 0
@@ -655,6 +704,19 @@ static QueryType parse_header(vector<Token>& tokens, int& pos) {
 			pos++;
 			return REMOVE_PROPERTY;
 		}
+	}
+	if(tokens[pos].type == TOK_RENAME) {
+		pos++;
+		if(tokens[pos].type == TOK_SET) {
+			pos++;
+			return RENAME_SET;
+		} else if(tokens[pos].type == TOK_PROPERTY) {
+			pos++;
+			return RENAME_PROPERTY;
+		}
+		PEC = PE_SYNTAX;
+		parser_error = "Syntax Error: RENAME must be followed by SET or PROPERTY.";
+		return ERR;
 	}
 	if(tokens[pos].type == TOK_UPDATE) {
 		pos++;

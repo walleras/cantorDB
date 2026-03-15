@@ -84,7 +84,7 @@ Token classify_word(string word) {
 		return Token {TOK_ELEM, word, -1, nullptr};
 	} else if(lower_word == "of") {
 		return Token {TOK_OF, word, -1, nullptr};
-	} else if(lower_word == "sets") {
+	} else if(lower_word == "sets" || lower_word == "set") {
 		return Token {TOK_SET, word, -1, nullptr};
 	} else if(lower_word == "all") {
 		return Token {TOK_ALL, word, -1, nullptr};
@@ -138,6 +138,8 @@ Token classify_word(string word) {
 		return Token {TOK_CLEAR, word, -1, nullptr};
 	} else if(lower_word =="update") {
 		return Token {TOK_UPDATE, word, -1, nullptr};
+	} else if(lower_word == "rename") {
+		return Token {TOK_RENAME, word, -1, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}

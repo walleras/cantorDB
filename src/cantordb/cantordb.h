@@ -45,9 +45,12 @@ public:
 	unordered_map<string, TYPE> property_types;
 	ERROR_CODE EC;
 	string error_message;
-
+	bool emergency_shut_off;
+	size_t memory_used;
+	size_t memory_limit;
 
 	cantordb(string name);
+	cantordb(string name, size_t memory_limit_bytes);
 	~cantordb();
 
 	bool create_set(string set_name);

@@ -1,12 +1,28 @@
 #include "cantordb.h"
 #include <algorithm>
+#include <new>
 
 const string UNIVERSAL_SET = "__universal__";
 const string CACHE_SET = "__cache__";
 const string TRASH_SET = "__trash__";
 
+static const size_t SET_BASE_COST = sizeof(Set) + 64;
+
 cantordb::cantordb(string name) {
 	this->name = name;
+	this->emergency_shut_off = false;
+	this->memory_used = 0;
+	this->memory_limit = 0;
+	create_set(UNIVERSAL_SET, true);
+	create_set(CACHE_SET, true);
+	create_set(TRASH_SET, true);
+}
+
+cantordb::cantordb(string name, size_t memory_limit_bytes) {
+	this->name = name;
+	this->emergency_shut_off = false;
+	this->memory_used = 0;
+	this->memory_limit = memory_limit_bytes;
 	create_set(UNIVERSAL_SET, true);
 	create_set(CACHE_SET, true);
 	create_set(TRASH_SET, true);
@@ -20,13 +36,17 @@ cantordb::~cantordb() {
 }
 
 bool cantordb::create_set(string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) != set_index.end()) {
 		EC = ER_SET_EX;
 		error_message = "Error: Set name already exists. Use a unique name for every set.";
 
 		return false;
 	}
-	Set* s = new Set();
+	Set* s = new (nothrow) Set();
+	if(!s) { emergency_shut_off = true; error_message = "Error: Out of memory."; return false; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete s; return false; }
 	s->set_name = set_name;
 	set_index[set_name] = s;
 	add_member(UNIVERSAL_SET, set_name);
@@ -35,13 +55,17 @@ bool cantordb::create_set(string set_name) {
 
 
 bool cantordb::create_set(string set_name, bool gen_set) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) != set_index.end()) {
 		EC = ER_SET_EX;
 		error_message = "Error: Set name already exists. Use a unique name for every set.";
 
 		return false;
 	}
-	Set* s = new Set();
+	Set* s = new (nothrow) Set();
+	if(!s) { emergency_shut_off = true; error_message = "Error: Out of memory."; return false; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete s; return false; }
 	s->set_name = set_name;
 	set_index[set_name] = s;
 	if(!gen_set) {
@@ -51,6 +75,7 @@ bool cantordb::create_set(string set_name, bool gen_set) {
 }
 
 bool cantordb::create_property(string property_name, string type) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(property_types.find(property_name) != property_types.end()) {
 		EC = ER_KEY_EX;
 		error_message = "Error: Property \"" + property_name + "\" already registered.";
@@ -75,6 +100,7 @@ bool cantordb::create_property(string property_name, string type) {
 }
 
 bool cantordb::add_property(string property_name, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -140,6 +166,7 @@ bool cantordb::add_property(string property_name, string set_name) {
 }
 
 bool cantordb::add_property(string key, int value, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -172,6 +199,7 @@ bool cantordb::add_property(string key, int value, string set_name) {
 }
 
 bool cantordb::add_property(string key, string value, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -200,10 +228,13 @@ bool cantordb::add_property(string key, string value, string set_name) {
 	}
 	set_index[set_name]->key_value[key] = value;
 	set_index[set_name]->key_index[key] = 1;
+	memory_used += key.size() + value.size() + 64;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; return false; }
 	return true;
 }
 
 bool cantordb::add_property(string key, double value, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -236,6 +267,7 @@ bool cantordb::add_property(string key, double value, string set_name) {
 }
 
 bool cantordb::add_property(string key, bool value, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -268,6 +300,7 @@ bool cantordb::add_property(string key, bool value, string set_name) {
 }
 
 bool cantordb::add_property(string key, long value, string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -300,6 +333,7 @@ bool cantordb::add_property(string key, long value, string set_name) {
 }
 
 bool cantordb::delete_set(string set_name, bool safe) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -326,6 +360,7 @@ bool cantordb::delete_set(string set_name, bool safe) {
 }
 
 bool cantordb::add_member(string set_name, string element_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -346,6 +381,7 @@ bool cantordb::add_member(string set_name, string element_name) {
 }
 
 void cantordb::add_member(string set_name, Set* element) {
+	if(emergency_shut_off) { return; }
 	set_index[element->set_name] = element;
 	Set* parent = set_index[set_name];
 	auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), element);
@@ -355,6 +391,7 @@ void cantordb::add_member(string set_name, Set* element) {
 }
 
 bool cantordb::remove_member(string set_name, string element_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -387,6 +424,7 @@ bool cantordb::remove_member(string set_name, string element_name) {
 }
 
 Set* cantordb::set_union(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -404,12 +442,16 @@ Set* cantordb::set_union(string set_a_name, string set_b_name) {
 }
 
 Set* cantordb::set_union(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
 		return nullptr;
 	}
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_a->set_name + " ∪ " + set_b->set_name;
 
 	auto& a = set_a->has_element;
@@ -433,6 +475,7 @@ Set* cantordb::set_union(Set* set_a, Set* set_b) {
 }
 
 Set* cantordb::set_intersection(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -450,12 +493,16 @@ Set* cantordb::set_intersection(string set_a_name, string set_b_name) {
 }
 
 Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
 		return nullptr;
 	}
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_a->set_name + " ∩ " + set_b->set_name;
 
 	auto& a = set_a->has_element;
@@ -477,6 +524,7 @@ Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
 }
 
 Set* cantordb::set_difference(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -494,12 +542,16 @@ Set* cantordb::set_difference(string set_a_name, string set_b_name) {
 }
 
 Set* cantordb::set_difference(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
 		return nullptr;
 	}
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_a->set_name + " - " + set_b->set_name;
 
 	auto& a = set_a->has_element;
@@ -522,6 +574,7 @@ Set* cantordb::set_difference(Set* set_a, Set* set_b) {
 }
 
 bool cantordb::is_disjoint(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set not found.";
@@ -531,6 +584,7 @@ bool cantordb::is_disjoint(string set_a_name, string set_b_name) {
 }
 
 bool cantordb::is_disjoint(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(!set_a || !set_b) return false;
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
@@ -548,6 +602,7 @@ bool cantordb::is_disjoint(Set* set_a, Set* set_b) {
 }
 
 Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -562,12 +617,16 @@ Set* cantordb::symmetric_difference(string set_a_name, string set_b_name) {
 }
 
 Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
 		return nullptr;
 	}
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_a->set_name + " ⊕ " + set_b->set_name;
 
 	auto& a = set_a->has_element;
@@ -591,6 +650,7 @@ Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
 }
 
 Set* cantordb::set_complement(string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -601,6 +661,7 @@ Set* cantordb::set_complement(string set_name) {
 	return complement;
 }
 bool cantordb::is_subset(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -616,6 +677,7 @@ bool cantordb::is_subset(string set_a_name, string set_b_name) {
 }
 
 bool cantordb::is_subset(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(!set_a || !set_b) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Null set pointer.";
@@ -642,14 +704,17 @@ bool cantordb::is_subset(Set* set_a, Set* set_b) {
 }
 
 bool cantordb::is_superset(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	return is_subset(set_b_name, set_a_name);
 }
 
 bool cantordb::is_superset(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	return is_subset(set_b, set_a);
 }
 
 bool cantordb::is_equal(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set not found.";
@@ -659,6 +724,7 @@ bool cantordb::is_equal(string set_a_name, string set_b_name) {
 }
 
 bool cantordb::is_equal(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(!set_a || !set_b) return false;
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
@@ -670,6 +736,7 @@ bool cantordb::is_equal(Set* set_a, Set* set_b) {
 }
 
 bool cantordb::is_proper_subset(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_a_name) == set_index.end() || set_index.find(set_b_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set not found.";
@@ -679,11 +746,13 @@ bool cantordb::is_proper_subset(string set_a_name, string set_b_name) {
 }
 
 bool cantordb::is_proper_subset(Set* set_a, Set* set_b) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(!set_a || !set_b) return false;
 	if(set_a->has_element.size() >= set_b->has_element.size()) return false;
 	return is_subset(set_a, set_b);
 }
 variant<bool, long, string, int, double> cantordb::get_property(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -705,6 +774,7 @@ variant<bool, long, string, int, double> cantordb::get_property(string set_name,
 }
 
 int cantordb::get_property_safe_int(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return -1; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -724,6 +794,7 @@ int cantordb::get_property_safe_int(string set_name, string key_name) {
 }
 
 string cantordb::get_property_safe_string(string set_name, string key_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -743,6 +814,7 @@ string cantordb::get_property_safe_string(string set_name, string key_name) {
 }
 
 double cantordb::get_property_safe_double(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return 0.0; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -762,6 +834,7 @@ double cantordb::get_property_safe_double(string set_name, string key_name) {
 }
 
 bool cantordb::get_property_safe_bool(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -781,6 +854,7 @@ bool cantordb::get_property_safe_bool(string set_name, string key_name) {
 }
 
 long cantordb::get_property_safe_long(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return 0L; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -800,6 +874,7 @@ long cantordb::get_property_safe_long(string set_name, string key_name) {
 }
 
 bool cantordb::delete_property(string set_name, string key_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -835,6 +910,7 @@ bool cantordb::delete_property(string set_name, string key_name) {
 	return true;
 }
 bool cantordb::update_property(string set_name, string key_name, int value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -855,6 +931,7 @@ bool cantordb::update_property(string set_name, string key_name, int value) {
 }
 
 bool cantordb::update_property(string set_name, string key_name, string value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -875,6 +952,7 @@ bool cantordb::update_property(string set_name, string key_name, string value) {
 }
 
 bool cantordb::update_property(string set_name, string key_name, double value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -895,6 +973,7 @@ bool cantordb::update_property(string set_name, string key_name, double value) {
 }
 
 bool cantordb::update_property(string set_name, string key_name, bool value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -915,6 +994,7 @@ bool cantordb::update_property(string set_name, string key_name, bool value) {
 }
 
 bool cantordb::update_property(string set_name, string key_name, long value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -935,6 +1015,7 @@ bool cantordb::update_property(string set_name, string key_name, long value) {
 }
 
 string cantordb::list_property_keys(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -958,6 +1039,7 @@ string cantordb::list_property_keys(string set_name) {
 	return result;
 }
 string cantordb::list_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -994,6 +1076,7 @@ string cantordb::list_properties(string set_name) {
 	return result;
 }
 string cantordb::list_string_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1010,6 +1093,7 @@ string cantordb::list_string_properties(string set_name) {
 }
 
 string cantordb::list_int_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1026,6 +1110,7 @@ string cantordb::list_int_properties(string set_name) {
 }
 
 string cantordb::list_double_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1042,6 +1127,7 @@ string cantordb::list_double_properties(string set_name) {
 }
 
 string cantordb::list_bool_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1058,6 +1144,7 @@ string cantordb::list_bool_properties(string set_name) {
 }
 
 string cantordb::list_long_properties(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1074,6 +1161,7 @@ string cantordb::list_long_properties(string set_name) {
 }
 
 string cantordb::list_elements(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1090,6 +1178,7 @@ string cantordb::list_elements(string set_name) {
 }
 
 int cantordb::get_cardinality(string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return -1; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1099,6 +1188,7 @@ int cantordb::get_cardinality(string set_name) {
 }
 
 string cantordb::list_all_sets() {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 
 	Set* s = set_index[UNIVERSAL_SET];
 	string result;
@@ -1110,6 +1200,7 @@ string cantordb::list_all_sets() {
 }
 
 string cantordb::list_cached_sets() {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 
 	Set* s = set_index[CACHE_SET];
 	string result;
@@ -1120,16 +1211,19 @@ string cantordb::list_cached_sets() {
 	return result;
 }
 bool cantordb::clear_cache() {
-	Set* s = set_index[CACHE_SET];
-	for (auto& element : s->has_element) {
-		set_index.erase(element->set_name);
-		delete element;
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
+	Set* cache = set_index[CACHE_SET];
+	// Copy the vector — delete_set modifies has_element during unlinking
+	vector<Set*> to_delete = cache->has_element;
+	for (auto& element : to_delete) {
+		// delete_set unlinks from member_of/has_element, then deletes
+		delete_set(element->set_name, false);
 	}
-	s->has_element.clear();
 	return true;
 }
 
 bool cantordb::rename_set(string set_name, string set_new_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1149,6 +1243,7 @@ bool cantordb::rename_set(string set_name, string set_new_name) {
 }
 
 string cantordb::list_sets(string set_name) {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1166,6 +1261,7 @@ string cantordb::list_sets(string set_name) {
 }
 
 bool cantordb::is_element(string set_a_name, string set_b_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_a_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_a_name + "\" not found.";
@@ -1254,6 +1350,7 @@ static void read_properties(ifstream& in, Set* s) {
 }
 
 Set* cantordb::where_elements_greater_than(string set_name, string property, int value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1269,7 +1366,10 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, int
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1284,6 +1384,7 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, int
 }
 
 Set* cantordb::where_elements_lesser_than(string set_name, string property, int value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1299,7 +1400,10 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, int 
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1314,6 +1418,7 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, int 
 }
 
 Set* cantordb::where_elements_equal_than(string set_name, string property, int value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1329,7 +1434,10 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, int v
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1346,6 +1454,7 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, int v
 // ---- long overloads ----
 
 Set* cantordb::where_elements_greater_than(string set_name, string property, long value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1361,7 +1470,10 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, lon
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1376,6 +1488,7 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, lon
 }
 
 Set* cantordb::where_elements_lesser_than(string set_name, string property, long value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1391,7 +1504,10 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, long
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1406,6 +1522,7 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, long
 }
 
 Set* cantordb::where_elements_equal_than(string set_name, string property, long value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1421,7 +1538,10 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, long 
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1438,6 +1558,7 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, long 
 // ---- double overloads ----
 
 Set* cantordb::where_elements_greater_than(string set_name, string property, double value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1453,7 +1574,10 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, dou
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " > " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1468,6 +1592,7 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, dou
 }
 
 Set* cantordb::where_elements_lesser_than(string set_name, string property, double value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1483,7 +1608,10 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, doub
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " < " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1498,6 +1626,7 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, doub
 }
 
 Set* cantordb::where_elements_equal_than(string set_name, string property, double value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1513,7 +1642,10 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, doubl
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " == " + to_string(value) + "]";
 
 	int i = 0, j = 0;
@@ -1528,6 +1660,7 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, doubl
 }
 
 Set* cantordb::where_elements_equal_than(string set_name, string property, string value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1543,7 +1676,10 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, strin
 	auto& a = parent->has_element;
 	auto& b = string_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " == " + value + "]";
 
 	int i = 0, j = 0;
@@ -1558,6 +1694,7 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, strin
 }
 
 Set* cantordb::where_elements_equal_than(string set_name, string property, bool value) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
 		error_message = "Error: Set \"" + set_name + "\" not found.";
@@ -1573,7 +1710,10 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, bool 
 	auto& a = parent->has_element;
 	auto& b = bool_property_index[property];
 
-	Set* result = new Set();
+	Set* result = new (nothrow) Set();
+	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
+	memory_used += SET_BASE_COST;
+	if(memory_limit > 0 && memory_used > memory_limit) { emergency_shut_off = true; error_message = "Error: Memory limit exceeded."; delete result; return nullptr; }
 	result->set_name = set_name + "[" + property + " == " + (value ? "true" : "false") + "]";
 
 	int i = 0, j = 0;

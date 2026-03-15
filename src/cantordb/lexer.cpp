@@ -39,6 +39,10 @@ vector<Token> lexer(const string& query) {
 			tokens.push_back(handle_numbers(query, i));
 		} else if(query[i] == ',') {
 
+		} else if(query[i] == '"'){
+			i++;
+			string word = read_identifier(query, i);
+			tokens.push_back(Token {TOK_IDENTIFIER, word, -1, nullptr});
 		} else {
 			if(query[i] == '>') {
 				if(i + 1 < (int)query.size() && query[i+1] == '=') {
@@ -64,6 +68,19 @@ vector<Token> lexer(const string& query) {
 	tokens.push_back(Token {TOK_EOF, "", -1, nullptr});
 
 	return tokens;
+}
+
+string read_identifier(const string& query, int& i) {
+	string word;
+	while (i < (int)query.size() && query[i] != '"') {
+		word.push_back(query[i]);
+		i++;
+	}
+	if(i >= (int)query.size()) {
+		return "ERROR_UNCLOSED_QUOTE";
+	}
+	i++; // skip closing quote
+	return word;
 }
 
 string read_word(const string& query, int& i) {
@@ -140,6 +157,10 @@ Token classify_word(string word) {
 		return Token {TOK_UPDATE, word, -1, nullptr};
 	} else if(lower_word == "rename") {
 		return Token {TOK_RENAME, word, -1, nullptr};
+	} else if(lower_word == "save") {
+		return Token {TOK_SAVE, word, -1, nullptr};
+	} else if(lower_word== "load") {
+		return Token {TOK_LOAD, word, -1, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}

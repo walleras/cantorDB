@@ -5,6 +5,7 @@
 *.db
 *.log
 test_output*.txt
+SQLITE_LESSONS_REPORT.md
 
 # netdb (separate project)
 src/netdb/

@@ -42,6 +42,7 @@ static string remove_elem(cantordb& db, vector<Token>& tokens, int& pos);
 static string remove_property_query(cantordb& db, vector<Token>& tokens, int& pos);
 static string rename_set_query(cantordb& db, vector<Token>& tokens, int& pos);
 static string rename_property_query(cantordb& db, vector<Token>& tokens, int& pos);
+static QueryType parse_complement(vector<Token>& tokens, int& pos);
 
 string parse_query(cantordb& db, const string& query) {
 	vector<Token> tokens = lexer(query);
@@ -94,6 +95,16 @@ string parse_query(cantordb& db, const string& query) {
 		return db.list_properties(tokens[pos].value);
 	}
 
+	if(type == COMPLEMENT) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		string set_name = tokens[pos].value;
+		Set* comp = db.set_complement(set_name);
+		if(!comp) return db.error_message;
+		return db.list_elements(comp->set_name);
+	}
+
 	if(type == CARDINALITY) {
 		if(tokens[pos].type != TOK_IDENTIFIER) {
 			return "Syntax Error: Expected set name after OF.";
@@ -102,6 +113,46 @@ string parse_query(cantordb& db, const string& query) {
 		int card = db.get_cardinality(set_name);
 		if(!db.error_message.empty()) return db.error_message;
 		return to_string(card);
+	}
+	if(type == SAVE) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected file name after SAVE.";
+		}
+		string path = tokens[pos].value + ".cdb";
+		if(save_cantordb(db, path)) {
+			return "Saved database to " + path + ".";
+		}
+		return "Error: Failed to save database to " + path + ".";
+	}
+	if(type == LOAD) {
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected file name after LOAD.";
+		}
+		string path = tokens[pos].value + ".cdb";
+		cantordb* loaded = load_cantordb(path);
+		if(!loaded) {
+			return "Error: Failed to load database from " + path + ".";
+		}
+		// Delete all existing sets
+		for(auto& [name, s] : db.set_index) {
+			delete s;
+		}
+		// Move loaded state into db
+		db.name = loaded->name;
+		db.set_index = loaded->set_index;
+		db.property_types = loaded->property_types;
+		db.integer_property_index = loaded->integer_property_index;
+		db.string_property_index = loaded->string_property_index;
+		db.double_property_index = loaded->double_property_index;
+		db.bool_property_index = loaded->bool_property_index;
+		db.long_property_index = loaded->long_property_index;
+		db.memory_used = loaded->memory_used;
+		db.emergency_shut_off = false;
+		db.error_message = "";
+		// Prevent loaded's destructor from freeing the sets we just took
+		loaded->set_index.clear();
+		delete loaded;
+		return "Loaded database from " + path + ".";
 	}
 
 	if(type == CREATE) {
@@ -122,6 +173,11 @@ string parse_query(cantordb& db, const string& query) {
 
 	if(type == RENAME_PROPERTY) {
 		return rename_property_query(db, tokens, pos);
+	}
+
+	if(type == CLEAR_CACHE) {
+		if(db.clear_cache()) return "Cache cleared.";
+		return db.error_message;
 	}
 
 	if(type == DELETE) {
@@ -593,8 +649,8 @@ static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos) 
 	string set_name = tokens[pos].value;
 
 	if(!has_value) {
-		// Zero-initialize as int
-		if(!db.add_property(key, 0, set_name)) {
+		// Zero-initialize using 2-arg overload (respects registered type)
+		if(!db.add_property(key, set_name)) {
 			return db.error_message;
 		}
 	} else if(is_bool) {
@@ -608,8 +664,16 @@ static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos) 
 				return db.error_message;
 			}
 		} else {
-			if(!db.add_property(key, (int)num_val, set_name)) {
-				return db.error_message;
+			// Check registered type to distinguish int vs long
+			auto it = db.property_types.find(key);
+			if(it != db.property_types.end() && it->second == LONG) {
+				if(!db.add_property(key, (long)num_val, set_name)) {
+					return db.error_message;
+				}
+			} else {
+				if(!db.add_property(key, (int)num_val, set_name)) {
+					return db.error_message;
+				}
 			}
 		}
 	} else {
@@ -679,6 +743,14 @@ static QueryType parse_header(vector<Token>& tokens, int& pos) {
 		}
 		return CREATE;
 	}
+	if(tokens[pos].type == TOK_SAVE) {
+		pos++;
+		return SAVE;
+	}
+	if(tokens[pos].type == TOK_LOAD) {
+		pos++;
+		return LOAD;
+	}
 	if(tokens[pos].type == TOK_TRASH) {
 		pos++;
 		return DELETE;
@@ -704,6 +776,16 @@ static QueryType parse_header(vector<Token>& tokens, int& pos) {
 			pos++;
 			return REMOVE_PROPERTY;
 		}
+	}
+	if(tokens[pos].type == TOK_CLEAR) {
+		pos++;
+		if(tokens[pos].type == TOK_CACHE) {
+			pos++;
+			return CLEAR_CACHE;
+		}
+		PEC = PE_SYNTAX;
+		parser_error = "Syntax Error: CLEAR must be followed by CACHE.";
+		return ERR;
 	}
 	if(tokens[pos].type == TOK_RENAME) {
 		pos++;
@@ -753,11 +835,24 @@ static QueryType parse_query_type(vector<Token>& tokens, int& pos) {
 		case TOK_PROPERTY:
 			pos++;
 			return parse_properties(tokens, pos);
+		case TOK_COMPLEMENT:
+			pos++;
+			return parse_complement(tokens, pos);
 		default:
 			PEC = PE_SYNTAX;
 			parser_error = "Syntax Error: GET must be followed by ELEMENTS, SETS, ALL, or CACHE.";
 			return ERR;
 	}
+}
+
+static QueryType parse_complement(vector<Token>& tokens, int& pos) {
+	if(tokens[pos].type == TOK_OF) {
+		pos++;
+		return COMPLEMENT;
+	}
+	PEC = PE_SYNTAX;
+	parser_error = "Syntax Error: COMPLEMENT must be followed by OF.";
+	return ERR;
 }
 
 static QueryType parse_elem(vector<Token>& tokens, int& pos) {

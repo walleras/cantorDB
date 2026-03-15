@@ -657,7 +657,12 @@ Set* cantordb::set_complement(string set_name) {
 		return nullptr;
 	}
 	Set* complement = set_difference(UNIVERSAL_SET, set_name);
-	complement->set_name = set_name + "'";
+	if(!complement) return nullptr;
+	string old_name = complement->set_name;
+	string new_name = set_name + "'";
+	complement->set_name = new_name;
+	set_index[new_name] = complement;
+	set_index.erase(old_name);
 	return complement;
 }
 bool cantordb::is_subset(string set_a_name, string set_b_name) {
@@ -1288,6 +1293,7 @@ static void write_string(ofstream& out, const string& s) {
 static string read_string(ifstream& in) {
 	uint32_t len;
 	in.read(reinterpret_cast<char*>(&len), sizeof(len));
+	if(!in.good() || len > 10000000) return "";
 	string s(len, '\0');
 	in.read(&s[0], len);
 	return s;
@@ -1780,7 +1786,7 @@ bool save_cantordb(const cantordb& db, const string& path) {
 
 cantordb* load_cantordb(const string& path) {
 	ifstream in(path, ios::binary);
-	if (!in) return nullptr;
+	if (!in.is_open()) return nullptr;
 
 	string db_name = read_string(in);
 	cantordb* db = new cantordb(db_name);

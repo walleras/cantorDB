@@ -17,7 +17,7 @@ extern const string UNIVERSAL_SET;
 extern const string CACHE_SET;
 extern const string TRASH_SET;
 
-enum ERROR_CODE {ER_SET_EX, ER_SET_NOT_FOUND, ER_KEY_EX, ER_ELEM_NOT_MEM, ER_KEY_NOT_FOUND, ER_KEY_WRONG_TYPE};
+enum ERROR_CODE {ER_SET_EX, ER_SET_NOT_FOUND, ER_KEY_EX, ER_ELEM_NOT_MEM, ER_ELEM_ALR_ADDED, ER_KEY_NOT_FOUND, ER_KEY_WRONG_TYPE};
 
 enum TYPE{INTEGER, STRING, DOUBLE, BOOL, LONG};
 
@@ -97,6 +97,7 @@ public:
 	bool update_property(string set_name, string key_name, double value);
 	bool update_property(string set_name, string key_name, bool value);
 	bool update_property(string set_name, string key_name, long value);
+	string list_all_keys();
 	string list_property_keys(string set_name);
 	string list_properties(string set_name);
 	string list_string_properties(string set_name);

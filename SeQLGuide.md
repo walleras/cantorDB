@@ -8,11 +8,15 @@ SeQL (Pronounced SehQL) is a set query language designed to manipulate and query
 
 ```
 GET ELEMENTS OF Animals
+GET ELEMENTS OF UNIVERSAL
+GET ELEMENTS OF CACHE
 GET SETS OF Animals
-GET ALL SETS
-GET CACHE SETS
 GET CARDINALITY OF Animals
 GET PROPERTIES OF Dog
+GET PROPERTY speed FROM Dog
+GET KEYS OF Dog
+GET KEYS OF UNIVERSAL
+GET COMPLEMENT OF Mammals
 IS Dog ELEMENT OF Animals
 IS Animals SET OF Dog
 IS Mammals SUBSET OF Animals
@@ -24,12 +28,18 @@ GET ELEMENTS OF Animals UNION Mammals
 GET ELEMENTS OF Animals .DIFFERENCE. Mammals UNION Cats
 GET ELEMENTS OF Animals WHERE legs > 0
 CREATE SETS Bird Lizard
+CREATE PROPERTY speed int
 ADD Dog TO Animals
 ADD PROPERTY speed = 5 TO Dog
+UPDATE PROPERTY speed FROM Dog TO 10
 REMOVE Dog FROM Animals
 REMOVE PROPERTY speed FROM Dog
+RENAME SET Bird TO Avian
 TRASH SETS Bird
 DELETE SETS Lizard
+CLEAR CACHE
+SAVE mydata
+LOAD mydata
 ```
 
 ### A note on philosophy
@@ -46,19 +56,25 @@ Dot notation is different. The dots sit directly next to the operator they are m
 
 ### Headers
 
-**GET** — Begins a retrieval query. Signals that the query will return a list of results. Must be followed by a query type keyword (ELEMENTS, SETS, ALL, or CACHE).
+**GET** — Begins a retrieval query. Signals that the query will return a list of results. Must be followed by a query type keyword (ELEMENTS, SETS, KEYS, PROPERTY, CARDINALITY, or COMPLEMENT).
 
 **IS** — Begins a boolean query. Signals that the query will return Yes or No. Must be followed by a set name.
 
 ### Query types
 
-**ELEMENTS** — Specifies that the query operates on the elements (children) of a set. Used after GET to retrieve a list of elements, or after IS to check element membership.
+**ELEMENTS** — Specifies that the query operates on the elements (children) of a set. Used after GET to retrieve a list of elements, or after IS to check element membership. GET ELEMENTS OF UNIVERSAL returns every set. GET ELEMENTS OF CACHE returns cached result sets.
 
 **SETS** — Used after GET to retrieve what sets a given set belongs to (its parents). Used after IS to check whether a set contains another as an element (inverse of ELEMENT).
 
-**ALL** — Modifier used before SETS. GET ALL SETS returns every set in the database.
+**KEYS** — Used after GET. GET KEYS OF \<Set\> lists the property keys and types on a specific set. GET KEYS OF UNIVERSAL lists all registered property names in the database.
 
-**CACHE** — Modifier used before SETS. GET CACHE SETS returns all cached (intermediate result) sets in the database.
+**PROPERTY** — Used after GET to retrieve property values. GET PROPERTY OF \<Set\> lists all property key-value pairs. GET PROPERTY \<key\> FROM \<Set\> returns a single property value. Also used as a modifier with ADD, REMOVE, UPDATE, and CREATE.
+
+**COMPLEMENT** — Used after GET. GET COMPLEMENT OF \<Set\> returns the complement of a set relative to the universal set (all sets not in the given set).
+
+**UNIVERSAL** — Refers to the universal set containing all user-created sets. Used with GET ELEMENTS OF UNIVERSAL or GET KEYS OF UNIVERSAL.
+
+**CACHE** — Refers to the cache set containing intermediate result sets from set algebra operations. Used with GET ELEMENTS OF CACHE.
 
 ### Relationship keywords
 
@@ -80,29 +96,35 @@ Dot notation is different. The dots sit directly next to the operator they are m
 
 **OF** — Structural keyword that separates the query type from the set algebra section. Every word must justify its existence; OF provides the bridge between what you are asking for and where you are looking.
 
-**TO** — Structural keyword used in ADD queries to specify the target set. ADD Dog TO Animals.
+**TO** — Structural keyword used in ADD, UPDATE, and RENAME queries to specify the target. ADD Dog TO Animals. UPDATE PROPERTY speed FROM Dog TO 10. RENAME SET Bird TO Avian.
 
-**FROM** — Structural keyword used in REMOVE queries to specify the source set. REMOVE Dog FROM Animals.
+**FROM** — Structural keyword used in REMOVE, UPDATE, and GET PROPERTY queries to specify the source. REMOVE Dog FROM Animals. GET PROPERTY speed FROM Dog.
 
 ### Query types (continued)
 
 **CARDINALITY** — Used after GET. GET CARDINALITY OF \<Set\> returns the number of elements in a set. Works with WHERE and set algebra collapse.
 
-**PROPERTIES** — Used after GET. GET PROPERTIES OF \<Set\> returns the properties of a set.
-
 ### CRUD operations
 
-**CREATE** — Creates new sets. Must be followed by SETS and one or more set names.
+**CREATE** — Creates new sets or properties. CREATE SETS \<name\> \<name\> ... creates sets. CREATE PROPERTY \<name\> \<type\> registers a property name with a type (int, string, double, bool, long). Properties must be registered before they can be added to sets.
 
 **TRASH** — Soft-deletes sets (moves to trash). Must be followed by SETS and one or more set names.
 
 **DELETE** — Hard-deletes sets permanently. Must be followed by SETS and one or more set names.
 
-**ADD** — Adds an element to a set or a property to a set. ADD \<elem\> TO \<Set\> for membership, ADD PROPERTY \<key\> TO \<Set\> for properties.
+**ADD** — Adds an element to a set or a property to a set. ADD \<elem\> TO \<Set\> for membership, ADD PROPERTY \<key\> TO \<Set\> for zero-initialized properties, ADD PROPERTY \<key\> = \<value\> TO \<Set\> for properties with a value.
 
 **REMOVE** — Removes an element from a set or a property from a set. REMOVE \<elem\> FROM \<Set\> for membership, REMOVE PROPERTY \<key\> FROM \<Set\> for properties.
 
-**PROPERTY** — Modifier keyword used with ADD and REMOVE to indicate property operations rather than membership operations.
+**UPDATE** — Updates a property value on a set. UPDATE PROPERTY \<key\> FROM \<Set\> TO \<value\>.
+
+**RENAME** — Renames a set. RENAME SET \<old\> TO \<new\>.
+
+**CLEAR** — Used with CACHE. CLEAR CACHE deletes all cached intermediate result sets.
+
+**SAVE** — Saves the current database to a .cdb file. SAVE \<filename\>.
+
+**LOAD** — Loads a database from a .cdb file, replacing the current database state. LOAD \<filename\>.
 
 ### Filtering
 
@@ -132,11 +154,27 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 
 `GET ELEMENTS OF <Set>` — Lists all elements of a set.
 
+`GET ELEMENTS OF UNIVERSAL` — Lists every set in the database.
+
+`GET ELEMENTS OF CACHE` — Lists all cached intermediate result sets.
+
 `GET SETS OF <Set>` — Lists all sets that a set belongs to.
 
-`GET ALL SETS` — Lists every set in the database.
+`GET CARDINALITY OF <Set>` — Returns the number of elements in a set.
 
-`GET CACHE SETS` — Lists all cached intermediate result sets.
+`GET CARDINALITY OF <Set> WHERE <key> > <value>` — Returns the count of elements matching a filter.
+
+`GET CARDINALITY OF <Set> UNION <Set>` — Returns the count of the union of two sets.
+
+`GET PROPERTIES OF <Set>` — Lists all property key-value pairs on a set.
+
+`GET PROPERTY <key> FROM <Set>` — Returns a single property value.
+
+`GET KEYS OF <Set>` — Lists property keys and their types on a set.
+
+`GET KEYS OF UNIVERSAL` — Lists all registered property names and types.
+
+`GET COMPLEMENT OF <Set>` — Returns elements in the universal set but not in the given set.
 
 `IS <Set> ELEMENT OF <Set>` — Checks if the first set is an element of the second.
 
@@ -145,6 +183,12 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 `IS <Set> SUBSET OF <Set>` — Checks if every element of the first set is also in the second.
 
 `IS <Set> SUPERSET OF <Set>` — Checks if the first set contains every element of the second.
+
+`IS <Set> PROPER SUBSET OF <Set>` — Checks if the first set is a strict subset of the second (subset but not equal).
+
+`IS <Set> EQUAL <Set>` — Checks if two sets contain exactly the same elements.
+
+`IS <Set> DISJOINT <Set>` — Checks if two sets share no elements.
 
 `GET ELEMENTS OF <Set> UNION <Set>` — Lists elements in either set.
 
@@ -156,35 +200,33 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 
 `GET ELEMENTS OF <Set> .UNION. <Set> INTERSECTION <Set>` — Union is evaluated first due to higher dot priority, then intersected with the third set.
 
-`IS <Set> DISJOINT <Set>` — Checks if two sets share no elements.
-
-`IS <Set> EQUAL <Set>` — Checks if two sets contain exactly the same elements.
-
-`IS <Set> PROPER SUBSET OF <Set>` — Checks if the first set is a strict subset of the second (subset but not equal).
-
-`GET CARDINALITY OF <Set>` — Returns the number of elements in a set.
-
-`GET CARDINALITY OF <Set> WHERE <key> > <value>` — Returns the count of elements matching a filter.
-
-`GET CARDINALITY OF <Set> UNION <Set>` — Returns the count of the union of two sets.
-
-`GET PROPERTIES OF <Set>` — Lists all properties of a set.
-
 `CREATE SETS <name> <name> ...` — Creates one or more new sets.
 
-`TRASH SETS <name> <name> ...` — Soft-deletes one or more sets (recoverable).
-
-`DELETE SETS <name> <name> ...` — Permanently deletes one or more sets.
+`CREATE PROPERTY <name> <type>` — Registers a property name with a type (int, string, double, bool, long).
 
 `ADD <elem> TO <Set>` — Adds an element to a set.
 
 `REMOVE <elem> FROM <Set>` — Removes an element from a set.
 
-`ADD PROPERTY <key> TO <Set>` — Adds a property to a set, zero-initialized.
+`ADD PROPERTY <key> TO <Set>` — Adds a property to a set, zero-initialized based on registered type.
 
 `ADD PROPERTY <key> = <value> TO <Set>` — Adds a property with a value. Type is inferred (number, string, or bool).
 
+`UPDATE PROPERTY <key> FROM <Set> TO <value>` — Updates a property value on a set.
+
 `REMOVE PROPERTY <key> FROM <Set>` — Removes a property from a set.
+
+`RENAME SET <old> TO <new>` — Renames a set.
+
+`TRASH SETS <name> <name> ...` — Soft-deletes one or more sets (recoverable).
+
+`DELETE SETS <name> <name> ...` — Permanently deletes one or more sets.
+
+`CLEAR CACHE` — Deletes all cached intermediate result sets.
+
+`SAVE <filename>` — Saves the database to a .cdb file.
+
+`LOAD <filename>` — Loads a database from a .cdb file.
 
 `GET ELEMENTS OF <Set> WHERE <key> > <value>` — Lists elements where property is greater than value.
 
@@ -197,5 +239,3 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 `GET ELEMENTS OF <Set> WHERE <key> <= <value>` — Lists elements where property is less than or equal to value.
 
 `GET ELEMENTS OF <Set> WHERE <key> > <value> UNION <Set> WHERE <key> > <value>` — WHERE clauses apply per-set before the UNION.
-
-`UPDATE PROPERTY <Property> FROM <Set> TO <value>` - Update a property on a set.

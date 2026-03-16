@@ -103,8 +103,8 @@ Token classify_word(string word) {
 		return Token {TOK_OF, word, -1, nullptr};
 	} else if(lower_word == "sets" || lower_word == "set") {
 		return Token {TOK_SET, word, -1, nullptr};
-	} else if(lower_word == "all") {
-		return Token {TOK_ALL, word, -1, nullptr};
+	} else if(lower_word == "universal") {
+		return Token {TOK_UNIVERSAL, word, -1, nullptr};
 	} else if(lower_word == "cache") {
 		return Token {TOK_CACHE, word, -1, nullptr};
 	} else if(lower_word == "is") {
@@ -161,6 +161,8 @@ Token classify_word(string word) {
 		return Token {TOK_SAVE, word, -1, nullptr};
 	} else if(lower_word== "load") {
 		return Token {TOK_LOAD, word, -1, nullptr};
+	} else if(lower_word == "keys") {
+		return Token {TOK_KEY, word, -1, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}

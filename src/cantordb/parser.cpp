@@ -11,8 +11,6 @@ static QueryType parse_header(vector<Token>& tokens, int& pos);
 static QueryType parse_query_type(vector<Token>& tokens, int& pos);
 static QueryType parse_elem(vector<Token>& tokens, int& pos);
 static QueryType parse_set(vector<Token>& tokens, int& pos);
-static QueryType parse_all(vector<Token>& tokens, int& pos);
-static QueryType parse_cache(vector<Token>& tokens, int& pos);
 static QueryType parse_cardinality(vector<Token>& tokens, int& pos);
 static QueryType parse_properties(vector<Token>& tokens, int& pos);
 static void element_collapse_pass(cantordb& db, vector<Token>& tokens);
@@ -92,7 +90,45 @@ string parse_query(cantordb& db, const string& query) {
 		if(tokens[pos].type != TOK_IDENTIFIER) {
 			return "Syntax Error: Expected set name after OF.";
 		}
+		if(tokens[pos].result != nullptr) {
+			return "Error: Cannot get properties from calculated set.";
+		}
 		return db.list_properties(tokens[pos].value);
+	}
+
+	if(type == GET_PROPERTY) {
+		// pos is at the key name: GET PROPERTY <key> FROM <set>
+		string key = tokens[pos].value;
+		pos++;
+		if(tokens[pos].type != TOK_FROM) {
+			return "Syntax Error: Expected FROM after property name.";
+		}
+		pos++;
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after FROM.";
+		}
+		string set_name = tokens[pos].value;
+		auto result = db.get_property(set_name, key);
+		if(!db.error_message.empty()) return db.error_message;
+		return std::visit([](auto&& val) -> string {
+			using T = std::decay_t<decltype(val)>;
+			if constexpr (std::is_same_v<T, bool>) return val ? "true" : "false";
+			else if constexpr (std::is_same_v<T, string>) return val;
+			else return to_string(val);
+		}, result);
+	}
+
+	if(type == KEYS) {
+		if(tokens[pos].type == TOK_UNIVERSAL) {
+			return db.list_all_keys();
+		}
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			return "Syntax Error: Expected set name after OF.";
+		}
+		if(tokens[pos].result != nullptr) {
+			return "Error: Cannot get keys from calculated set.";
+		}
+		return db.list_property_keys(tokens[pos].value);
 	}
 
 	if(type == COMPLEMENT) {
@@ -184,16 +220,8 @@ string parse_query(cantordb& db, const string& query) {
 		return trash_query(db, tokens, pos);
 	}
 
-	if(type == ALL_SETS) {
-		return db.list_all_sets();
-	}
-
 	if(type == IS) {
 		return is_query(db, tokens, pos);
-	}
-
-	if(type == CACHE_SETS) {
-		return db.list_cached_sets();
 	}
 
 	if(type == DELETE_HARSH) {
@@ -823,24 +851,27 @@ static QueryType parse_query_type(vector<Token>& tokens, int& pos) {
 		case TOK_SET:
 			pos++;
 			return parse_set(tokens, pos);
-		case TOK_ALL:
-			pos++;
-			return parse_all(tokens, pos);
-		case TOK_CACHE:
-			pos++;
-			return parse_cache(tokens, pos);
 		case TOK_CARDINALITY:
 			pos++;
 			return parse_cardinality(tokens, pos);
 		case TOK_PROPERTY:
 			pos++;
 			return parse_properties(tokens, pos);
+		case TOK_KEY:
+			pos++;
+			if(tokens[pos].type == TOK_OF) {
+				pos++;
+				return KEYS;
+			}
+			PEC = PE_SYNTAX;
+			parser_error = "Syntax Error: KEYS must be followed by OF.";
+			return ERR;
 		case TOK_COMPLEMENT:
 			pos++;
 			return parse_complement(tokens, pos);
 		default:
 			PEC = PE_SYNTAX;
-			parser_error = "Syntax Error: GET must be followed by ELEMENTS, SETS, ALL, or CACHE.";
+			parser_error = "Syntax Error: GET must be followed by ELEMENTS, SETS, KEYS, or COMPLEMENT.";
 			return ERR;
 	}
 }
@@ -858,6 +889,16 @@ static QueryType parse_complement(vector<Token>& tokens, int& pos) {
 static QueryType parse_elem(vector<Token>& tokens, int& pos) {
 	if(tokens[pos].type == TOK_OF) {
 		pos++;
+		if(tokens[pos].type == TOK_UNIVERSAL) {
+			tokens[pos].type = TOK_IDENTIFIER;
+			tokens[pos].value = "__universal__";
+			return ELEMENTS;
+		}
+		if(tokens[pos].type == TOK_CACHE) {
+			tokens[pos].type = TOK_IDENTIFIER;
+			tokens[pos].value = "__cache__";
+			return ELEMENTS;
+		}
 		return ELEMENTS;
 	}
 	PEC = PE_SYNTAX;
@@ -870,8 +911,11 @@ static QueryType parse_properties(vector<Token>& tokens, int& pos) {
 		pos++;
 		return PROPERTIES;
 	}
+	if(tokens[pos].type == TOK_IDENTIFIER) {
+		return GET_PROPERTY;
+	}
 	PEC = PE_SYNTAX;
-	parser_error = "Syntax Error: PROPERTIES must be followed by OF.";
+	parser_error = "Syntax Error: PROPERTY must be followed by OF or a property name.";
 	return ERR;
 }
 
@@ -892,26 +936,6 @@ static QueryType parse_set(vector<Token>& tokens, int& pos) {
 	}
 	PEC = PE_SYNTAX;
 	parser_error = "Syntax Error: SETS must be followed by OF.";
-	return ERR;
-}
-
-static QueryType parse_all(vector<Token>& tokens, int& pos) {
-	if(tokens[pos].type == TOK_SET) {
-		pos++;
-		return ALL_SETS;
-	}
-	PEC = PE_SYNTAX;
-	parser_error = "Syntax Error: ALL must be followed by SETS.";
-	return ERR;
-}
-
-static QueryType parse_cache(vector<Token>& tokens, int& pos) {
-	if(tokens[pos].type == TOK_SET) {
-		pos++;
-		return CACHE_SETS;
-	}
-	PEC = PE_SYNTAX;
-	parser_error = "Syntax Error: CACHE must be followed by SETS.";
 	return ERR;
 }
 

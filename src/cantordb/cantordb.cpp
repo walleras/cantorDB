@@ -1,5 +1,6 @@
 #include "cantordb.h"
 #include <algorithm>
+#include <cassert>
 #include <new>
 
 const string UNIVERSAL_SET = "__universal__";
@@ -29,6 +30,19 @@ cantordb::cantordb(string name, size_t memory_limit_bytes) {
 }
 
 cantordb::~cantordb() {
+	// Two-pass shutdown: break all cross-references before freeing memory.
+	// Pass 1: clear membership vectors so no Set* dangles during deletion
+	for(auto& [name, s] : set_index) {
+		s->member_of.clear();
+		s->has_element.clear();
+	}
+	// Clear property indices (also hold Set* pointers into deleted Sets)
+	integer_property_index.clear();
+	string_property_index.clear();
+	double_property_index.clear();
+	bool_property_index.clear();
+	long_property_index.clear();
+	// Pass 2: delete all Set objects
 	for(auto& [name, s] : set_index) {
 		delete s;
 	}
@@ -354,6 +368,28 @@ bool cantordb::delete_set(string set_name, bool safe) {
 		vec.erase(std::remove(vec.begin(), vec.end(), target), vec.end());
 	}
 
+	// Remove from property indices
+	for(auto& [key, vec] : integer_property_index) {
+		auto it = std::lower_bound(vec.begin(), vec.end(), target);
+		if(it != vec.end() && *it == target) vec.erase(it);
+	}
+	for(auto& [key, vec] : string_property_index) {
+		auto it = std::lower_bound(vec.begin(), vec.end(), target);
+		if(it != vec.end() && *it == target) vec.erase(it);
+	}
+	for(auto& [key, vec] : double_property_index) {
+		auto it = std::lower_bound(vec.begin(), vec.end(), target);
+		if(it != vec.end() && *it == target) vec.erase(it);
+	}
+	for(auto& [key, vec] : bool_property_index) {
+		auto it = std::lower_bound(vec.begin(), vec.end(), target);
+		if(it != vec.end() && *it == target) vec.erase(it);
+	}
+	for(auto& [key, vec] : long_property_index) {
+		auto it = std::lower_bound(vec.begin(), vec.end(), target);
+		if(it != vec.end() && *it == target) vec.erase(it);
+	}
+
 	delete target;
 	set_index.erase(set_name);
 	return true;
@@ -371,6 +407,11 @@ bool cantordb::add_member(string set_name, string element_name) {
 		error_message = "Error: Set \"" + element_name + "\" not found.";
 		return false;
 	}
+	if(is_element(element_name, set_name)) {
+		EC = ER_ELEM_ALR_ADDED;
+		error_message = "Error: \"" + element_name + "\" is already an element of \"" + set_name + "\".";
+		return false;
+	}
 	Set* parent = set_index[set_name];
 	Set* child = set_index[element_name];
 	auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), child);
@@ -385,6 +426,7 @@ void cantordb::add_member(string set_name, Set* element) {
 	set_index[element->set_name] = element;
 	Set* parent = set_index[set_name];
 	auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), element);
+	if(pos != parent->has_element.end() && *pos == element) return;
 	parent->has_element.insert(pos, element);
 	auto mpos = std::lower_bound(element->member_of.begin(), element->member_of.end(), parent);
 	element->member_of.insert(mpos, parent);
@@ -456,6 +498,8 @@ Set* cantordb::set_union(Set* set_a, Set* set_b) {
 
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	int i = 0, j = 0;
 	while(i < (int)a.size() && j < (int)b.size()) {
 		if(a[i] < b[j]) {
@@ -507,6 +551,8 @@ Set* cantordb::set_intersection(Set* set_a, Set* set_b) {
 
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	int i = 0, j = 0;
 	while(i < (int)a.size() && j < (int)b.size()) {
 		if(a[i] < b[j]) {
@@ -556,6 +602,8 @@ Set* cantordb::set_difference(Set* set_a, Set* set_b) {
 
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	int i = 0, j = 0;
 	while(i < (int)a.size() && j < (int)b.size()) {
 		if(a[i] < b[j]) {
@@ -588,6 +636,8 @@ bool cantordb::is_disjoint(Set* set_a, Set* set_b) {
 	if(!set_a || !set_b) return false;
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	int i = 0, j = 0;
 	while(i < (int)a.size() && j < (int)b.size()) {
 		if(a[i] < b[j]) {
@@ -631,6 +681,8 @@ Set* cantordb::symmetric_difference(Set* set_a, Set* set_b) {
 
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	int i = 0, j = 0;
 	while(i < (int)a.size() && j < (int)b.size()) {
 		if(a[i] < b[j]) {
@@ -690,6 +742,8 @@ bool cantordb::is_subset(Set* set_a, Set* set_b) {
 	}
 	auto& sub = set_a->has_element;
 	auto& sup = set_b->has_element;
+	assert(std::is_sorted(sub.begin(), sub.end()));
+	assert(std::is_sorted(sup.begin(), sup.end()));
 	if(sub.empty()) return true;
 	if(sup.empty()) return false;
 	if(sub.size() > sup.size()) return false;
@@ -733,6 +787,8 @@ bool cantordb::is_equal(Set* set_a, Set* set_b) {
 	if(!set_a || !set_b) return false;
 	auto& a = set_a->has_element;
 	auto& b = set_b->has_element;
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 	if(a.size() != b.size()) return false;
 	for(int i = 0; i < (int)a.size(); i++) {
 		if(a[i] != b[i]) return false;
@@ -1017,6 +1073,24 @@ bool cantordb::update_property(string set_name, string key_name, long value) {
 	}
 	set_index[set_name]->key_long[key_name] = value;
 	return true;
+}
+
+string cantordb::list_all_keys() {
+	if(emergency_shut_off) { return "Error: Database emergency shut off."; }
+	string result;
+	for(auto& [key, type] : property_types) {
+		string type_str;
+		switch(type) {
+			case INTEGER: type_str = "int"; break;
+			case STRING:  type_str = "string"; break;
+			case DOUBLE:  type_str = "double"; break;
+			case BOOL:    type_str = "bool"; break;
+			case LONG:    type_str = "long"; break;
+		}
+		if(!result.empty()) result += "\n";
+		result += key + ": " + type_str;
+	}
+	return result;
 }
 
 string cantordb::list_property_keys(string set_name) {
@@ -1371,6 +1445,8 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, int
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1405,6 +1481,8 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, int 
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1439,6 +1517,8 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, int v
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = integer_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1475,6 +1555,8 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, lon
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1509,6 +1591,8 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, long
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1543,6 +1627,8 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, long 
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = long_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1579,6 +1665,8 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, dou
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1613,6 +1701,8 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, doub
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1647,6 +1737,8 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, doubl
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = double_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1681,6 +1773,8 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, strin
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = string_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }
@@ -1715,6 +1809,8 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, bool 
 	Set* parent = set_index[set_name];
 	auto& a = parent->has_element;
 	auto& b = bool_property_index[property];
+	assert(std::is_sorted(a.begin(), a.end()));
+	assert(std::is_sorted(b.begin(), b.end()));
 
 	Set* result = new (nothrow) Set();
 	if(!result) { emergency_shut_off = true; error_message = "Error: Out of memory."; return nullptr; }

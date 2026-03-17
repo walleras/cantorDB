@@ -154,6 +154,15 @@ static vector<Element> elements = {
 int main() {
 	cantordb db("PeriodicTable");
 
+	// --- Register property types ---
+	db.create_property("atomic_number", "int");
+	db.create_property("symbol", "string");
+	db.create_property("atomic_weight", "double");
+	db.create_property("period", "int");
+	db.create_property("group", "int");
+	db.create_property("description", "string");
+	db.create_property("typical_charge", "int");
+
 	// --- Classification category sets ---
 	// Metal sub-categories
 	db.create_set("Metals");

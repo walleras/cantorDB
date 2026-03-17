@@ -50,6 +50,17 @@ string parse_query(cantordb& db, const string& query) {
 	parser_error = "";
 	db.error_message = "";
 
+	if(tokens[pos].type == TOK_RESTORE) {
+		pos++;
+		if(tokens[pos].type != TOK_IDENTIFIER) {
+			// Error
+		}
+		if(db.restore_set(tokens[pos].value)) {
+			return "Restored set \"" + tokens[pos].value + "\" from TRASH.";
+		}
+		if(!db.error_message.empty()) return db.error_message;
+	}
+
 	where_collapse_pass(db, tokens);
 
 	// Check if collapse pass produced an error
@@ -75,15 +86,24 @@ string parse_query(cantordb& db, const string& query) {
 			return "Syntax Error: Expected set name after OF.";
 		}
 		string set_name = tokens[pos].value;
-		return db.list_elements(set_name);
+		string result = db.list_elements(set_name);
+		if(!db.error_message.empty()) return db.error_message;
+		if(result.empty()) return "(empty)";
+		return result;
 	}
 
 	if(type == SETS) {
+		if(tokens[pos].type == TOK_UNIVERSAL || tokens[pos].type == TOK_CACHE || tokens[pos].type == TOK_TRASH) {
+			return "Error: " + tokens[pos].value + " is a built-in set. Use GET ELEMENTS OF " + tokens[pos].value + " instead.";
+		}
 		if(tokens[pos].type != TOK_IDENTIFIER) {
 			return "Syntax Error: Expected set name after OF.";
 		}
 		string set_name = tokens[pos].value;
-		return db.list_sets(set_name);
+		string result = db.list_sets(set_name);
+		if(!db.error_message.empty()) return db.error_message;
+		if(result.empty()) return "(empty)";
+		return result;
 	}
 
 	if(type == PROPERTIES) {
@@ -93,7 +113,10 @@ string parse_query(cantordb& db, const string& query) {
 		if(tokens[pos].result != nullptr) {
 			return "Error: Cannot get properties from calculated set.";
 		}
-		return db.list_properties(tokens[pos].value);
+		string result = db.list_properties(tokens[pos].value);
+		if(!db.error_message.empty()) return db.error_message;
+		if(result.empty()) return "(empty)";
+		return result;
 	}
 
 	if(type == GET_PROPERTY) {
@@ -120,7 +143,12 @@ string parse_query(cantordb& db, const string& query) {
 
 	if(type == KEYS) {
 		if(tokens[pos].type == TOK_UNIVERSAL) {
-			return db.list_all_keys();
+			string result = db.list_all_keys();
+			if(result.empty()) return "(empty) No properties registered. Use CREATE PROPERTY <name> <type> first.";
+			return result;
+		}
+		if(tokens[pos].type == TOK_CACHE || tokens[pos].type == TOK_TRASH) {
+			return "Error: " + tokens[pos].value + " is a built-in set and does not have properties.";
 		}
 		if(tokens[pos].type != TOK_IDENTIFIER) {
 			return "Syntax Error: Expected set name after OF.";
@@ -128,7 +156,10 @@ string parse_query(cantordb& db, const string& query) {
 		if(tokens[pos].result != nullptr) {
 			return "Error: Cannot get keys from calculated set.";
 		}
-		return db.list_property_keys(tokens[pos].value);
+		string result = db.list_property_keys(tokens[pos].value);
+		if(!db.error_message.empty()) return db.error_message;
+		if(result.empty()) return "(empty)";
+		return result;
 	}
 
 	if(type == COMPLEMENT) {
@@ -138,10 +169,28 @@ string parse_query(cantordb& db, const string& query) {
 		string set_name = tokens[pos].value;
 		Set* comp = db.set_complement(set_name);
 		if(!comp) return db.error_message;
-		return db.list_elements(comp->set_name);
+		string result = db.list_elements(comp->set_name);
+		if(result.empty()) return "(empty)";
+		return result;
 	}
 
 	if(type == CARDINALITY) {
+		// Allow UNIVERSAL/CACHE/TRASH for cardinality
+		if(tokens[pos].type == TOK_UNIVERSAL) {
+			int card = db.get_cardinality("__universal__");
+			if(!db.error_message.empty()) return db.error_message;
+			return to_string(card);
+		}
+		if(tokens[pos].type == TOK_CACHE) {
+			int card = db.get_cardinality("__cache__");
+			if(!db.error_message.empty()) return db.error_message;
+			return to_string(card);
+		}
+		if(tokens[pos].type == TOK_TRASH) {
+			int card = db.get_cardinality("__trash__");
+			if(!db.error_message.empty()) return db.error_message;
+			return to_string(card);
+		}
 		if(tokens[pos].type != TOK_IDENTIFIER) {
 			return "Syntax Error: Expected set name after OF.";
 		}
@@ -897,6 +946,11 @@ static QueryType parse_elem(vector<Token>& tokens, int& pos) {
 		if(tokens[pos].type == TOK_CACHE) {
 			tokens[pos].type = TOK_IDENTIFIER;
 			tokens[pos].value = "__cache__";
+			return ELEMENTS;
+		}
+		if(tokens[pos].type == TOK_TRASH) {
+			tokens[pos].type = TOK_IDENTIFIER;
+			tokens[pos].value = "__trash__";
 			return ELEMENTS;
 		}
 		return ELEMENTS;

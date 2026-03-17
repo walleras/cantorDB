@@ -354,15 +354,14 @@ bool cantordb::delete_set(string set_name, bool safe) {
 		return false;
 	}
 	Set* target = set_index[set_name];
-	if(safe) {
-		add_member(TRASH_SET, target);
-	}
 
+	// Unlink from all parents' has_element
 	for(int i = 0; i < (int)target->member_of.size(); i++) {
 		auto& vec = target->member_of[i]->has_element;
 		vec.erase(std::remove(vec.begin(), vec.end(), target), vec.end());
 	}
 
+	// Unlink from all children's member_of
 	for(int i = 0; i < (int)target->has_element.size(); i++) {
 		auto& vec = target->has_element[i]->member_of;
 		vec.erase(std::remove(vec.begin(), vec.end(), target), vec.end());
@@ -390,8 +389,102 @@ bool cantordb::delete_set(string set_name, bool safe) {
 		if(it != vec.end() && *it == target) vec.erase(it);
 	}
 
-	delete target;
-	set_index.erase(set_name);
+	if(safe) {
+		// Soft delete: keep the Set* alive in TRASH for possible restore.
+		// member_of and has_element on target are preserved as a restore record.
+		set_index.erase(set_name);
+		Set* trash = set_index[TRASH_SET];
+		auto pos = std::lower_bound(trash->has_element.begin(), trash->has_element.end(), target);
+		trash->has_element.insert(pos, target);
+	} else {
+		// Hard delete: destroy the Set* permanently
+		delete target;
+		set_index.erase(set_name);
+	}
+	return true;
+}
+
+bool cantordb::restore_set(string set_name) {
+	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
+
+	// Find the set in TRASH by name
+	Set* trash = set_index[TRASH_SET];
+	Set* target = nullptr;
+	for(auto* s : trash->has_element) {
+		if(s->set_name == set_name) {
+			target = s;
+			break;
+		}
+	}
+	if(!target) {
+		EC = ER_SET_NOT_FOUND;
+		error_message = "Error: Set \"" + set_name + "\" not found in TRASH.";
+		return false;
+	}
+
+	// Remove from TRASH
+	auto& tvec = trash->has_element;
+	tvec.erase(std::remove(tvec.begin(), tvec.end(), target), tvec.end());
+
+	// Re-add to set_index
+	set_index[set_name] = target;
+
+	// Re-add to UNIVERSAL
+	add_member(UNIVERSAL_SET, set_name);
+
+	// Re-link to all parent sets (member_of was preserved as restore record)
+	for(auto* parent : target->member_of) {
+		if(parent->set_name == UNIVERSAL_SET) continue; // already re-added above
+		auto pos = std::lower_bound(parent->has_element.begin(), parent->has_element.end(), target);
+		if(pos == parent->has_element.end() || *pos != target) {
+			parent->has_element.insert(pos, target);
+		}
+	}
+
+	// Re-link to all child sets (has_element was preserved as restore record)
+	for(auto* child : target->has_element) {
+		auto pos = std::lower_bound(child->member_of.begin(), child->member_of.end(), target);
+		if(pos == child->member_of.end() || *pos != target) {
+			child->member_of.insert(pos, target);
+		}
+	}
+
+	// Re-add to property indices
+	for(auto& [key, idx] : target->key_index) {
+		switch(idx) {
+			case 0: { // int
+				auto& vec = integer_property_index[key];
+				auto p = std::lower_bound(vec.begin(), vec.end(), target);
+				if(p == vec.end() || *p != target) vec.insert(p, target);
+				break;
+			}
+			case 1: { // string
+				auto& vec = string_property_index[key];
+				auto p = std::lower_bound(vec.begin(), vec.end(), target);
+				if(p == vec.end() || *p != target) vec.insert(p, target);
+				break;
+			}
+			case 2: { // double
+				auto& vec = double_property_index[key];
+				auto p = std::lower_bound(vec.begin(), vec.end(), target);
+				if(p == vec.end() || *p != target) vec.insert(p, target);
+				break;
+			}
+			case 3: { // bool
+				auto& vec = bool_property_index[key];
+				auto p = std::lower_bound(vec.begin(), vec.end(), target);
+				if(p == vec.end() || *p != target) vec.insert(p, target);
+				break;
+			}
+			case 4: { // long
+				auto& vec = long_property_index[key];
+				auto p = std::lower_bound(vec.begin(), vec.end(), target);
+				if(p == vec.end() || *p != target) vec.insert(p, target);
+				break;
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -1871,6 +1964,15 @@ bool save_cantordb(const cantordb& db, const string& path) {
 		write_string(out, child);
 	}
 
+	// property type registry
+	uint32_t prop_count = db.property_types.size();
+	out.write(reinterpret_cast<const char*>(&prop_count), sizeof(prop_count));
+	for (auto& [name, type] : db.property_types) {
+		write_string(out, name);
+		uint8_t t = static_cast<uint8_t>(type);
+		out.write(reinterpret_cast<const char*>(&t), sizeof(t));
+	}
+
 	if (!out.good()) { out.close(); remove(tmp_path.c_str()); return false; }
 	out.close();
 	remove(path.c_str());
@@ -1904,6 +2006,16 @@ cantordb* load_cantordb(const string& path) {
 	}
 
 	if (!in.good()) { delete db; return nullptr; }
+
+	// property type registry
+	uint32_t prop_count = 0;
+	if (in.read(reinterpret_cast<char*>(&prop_count), sizeof(prop_count))) {
+		for (uint32_t i = 0; i < prop_count; i++) {
+			string prop_name = read_string(in);
+			uint8_t t; in.read(reinterpret_cast<char*>(&t), sizeof(t));
+			db->property_types[prop_name] = static_cast<TYPE>(t);
+		}
+	}
 
 	// Build property indexes
 	for (auto& [name, s] : db->set_index) {

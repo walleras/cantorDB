@@ -26,3 +26,11 @@ src/netdb/
 /tests/test_memory.cpp
 /tests/test_validation.cpp
 /MemorySystem/
+
+# Generated test artifacts
+tests/*.exe
+*.csv
+CTO_REPORT_2026.md
+BOARD_REPORT_2026.md
+REPORTS_2026_EXPANDED.md
+REPORTS_2026.md

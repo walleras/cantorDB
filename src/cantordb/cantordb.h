@@ -61,6 +61,7 @@ public:
 	bool add_property(string key, bool value, string set_name);
 	bool add_property(string key, long value, string set_name);
 	bool delete_set(string set_name, bool safe = true);
+	bool restore_set(string set_name);
 	bool add_member(string set_name, string element_name);
 	void add_member(string set_name, Set* element);
 	bool remove_member(string set_name, string element_name);

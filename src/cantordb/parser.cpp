@@ -293,6 +293,26 @@ string parse_query(cantordb& db, const string& query) {
 		return remove_property_query(db, tokens, pos);
 	}
 
+	if(type == DELETE_HARSH) {
+		return delete_query(db, tokens, pos);
+	}
+
+	if(type == ADD_ELEM) {
+		return add_elem(db, tokens, pos);
+	}
+
+	if(type == ADD_PROPERTY) {
+		return add_property_query(db, tokens, pos);
+	}
+
+	if(type == REMOVE_ELEM) {
+		return remove_elem(db, tokens, pos);
+	}
+
+	if(type == REMOVE_PROPERTY) {
+		return remove_property_query(db, tokens, pos);
+	}
+
 	return "Unknown query type.";
 }
 

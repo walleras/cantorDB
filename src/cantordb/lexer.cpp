@@ -39,6 +39,10 @@ vector<Token> lexer(const string& query) {
 			tokens.push_back(handle_numbers(query, i));
 		} else if(query[i] == ',') {
 
+		} else if(query[i] == '"'){
+			i++;
+			string word = read_identifier(query, i);
+			tokens.push_back(Token {TOK_IDENTIFIER, word, -1, nullptr});
 		} else {
 			if(query[i] == '>') {
 				if(i + 1 < (int)query.size() && query[i+1] == '=') {
@@ -66,6 +70,19 @@ vector<Token> lexer(const string& query) {
 	return tokens;
 }
 
+string read_identifier(const string& query, int& i) {
+	string word;
+	while (i < (int)query.size() && query[i] != '"') {
+		word.push_back(query[i]);
+		i++;
+	}
+	if(i >= (int)query.size()) {
+		return "ERROR_UNCLOSED_QUOTE";
+	}
+	i++; // skip closing quote
+	return word;
+}
+
 string read_word(const string& query, int& i) {
 	string word;
 	while (i < (int)query.size() && !isspace(query[i]) && (isalnum(query[i]) || query[i] == '_')) {
@@ -84,10 +101,10 @@ Token classify_word(string word) {
 		return Token {TOK_ELEM, word, -1, nullptr};
 	} else if(lower_word == "of") {
 		return Token {TOK_OF, word, -1, nullptr};
-	} else if(lower_word == "sets") {
+	} else if(lower_word == "sets" || lower_word == "set") {
 		return Token {TOK_SET, word, -1, nullptr};
-	} else if(lower_word == "all") {
-		return Token {TOK_ALL, word, -1, nullptr};
+	} else if(lower_word == "universal") {
+		return Token {TOK_UNIVERSAL, word, -1, nullptr};
 	} else if(lower_word == "cache") {
 		return Token {TOK_CACHE, word, -1, nullptr};
 	} else if(lower_word == "is") {
@@ -132,7 +149,21 @@ Token classify_word(string word) {
 		return Token {TOK_EQUIV, word, -1, nullptr};
 	} else if(lower_word == "proper") {
 		return Token {TOK_PROPER, word, -1, nullptr};
-	} else{
+	} else if(lower_word == "complement") {
+		return Token {TOK_COMPLEMENT, word, -1, nullptr};
+	} else if(lower_word == "clear") {
+		return Token {TOK_CLEAR, word, -1, nullptr};
+	} else if(lower_word =="update") {
+		return Token {TOK_UPDATE, word, -1, nullptr};
+	} else if(lower_word == "rename") {
+		return Token {TOK_RENAME, word, -1, nullptr};
+	} else if(lower_word == "save") {
+		return Token {TOK_SAVE, word, -1, nullptr};
+	} else if(lower_word== "load") {
+		return Token {TOK_LOAD, word, -1, nullptr};
+	} else if(lower_word == "keys") {
+		return Token {TOK_KEY, word, -1, nullptr};
+	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}
 }

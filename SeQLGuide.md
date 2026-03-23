@@ -27,6 +27,9 @@ IS Animals DISJOINT Rocks
 GET ELEMENTS OF Animals UNION Mammals
 GET ELEMENTS OF Animals .DIFFERENCE. Mammals UNION Cats
 GET ELEMENTS OF Animals WHERE legs > 0
+GET ELEMENTS OF Animals WHERE legs > 0 AND speed > 5
+GET ELEMENTS OF Animals WHERE legs = 4 OR legs = 2
+GET ELEMENTS OF Animals WHERE legs > 0 NOT habitat = aquatic
 CREATE SETS Bird Lizard
 CREATE PROPERTY speed int
 ADD Dog TO Animals
@@ -36,6 +39,7 @@ REMOVE Dog FROM Animals
 REMOVE PROPERTY speed FROM Dog
 RENAME SET Bird TO Avian
 TRASH SETS Bird
+RESTORE Bird
 DELETE SETS Lizard
 CLEAR CACHE
 SAVE mydata
@@ -108,7 +112,9 @@ Dot notation is different. The dots sit directly next to the operator they are m
 
 **CREATE** — Creates new sets or properties. CREATE SETS \<name\> \<name\> ... creates sets. CREATE PROPERTY \<name\> \<type\> registers a property name with a type (int, string, double, bool, long). Properties must be registered before they can be added to sets.
 
-**TRASH** — Soft-deletes sets (moves to trash). Must be followed by SETS and one or more set names.
+**TRASH** — Soft-deletes sets (moves to trash, preserving memberships for restore). Must be followed by SETS and one or more set names.
+
+**RESTORE** — Restores a soft-deleted set from trash, re-linking all its previous memberships. RESTORE \<name\>.
 
 **DELETE** — Hard-deletes sets permanently. Must be followed by SETS and one or more set names.
 
@@ -128,7 +134,25 @@ Dot notation is different. The dots sit directly next to the operator they are m
 
 ### Filtering
 
-**WHERE** — Filters elements by property value. Placed after a set name. Supports >, <, =, >=, <= for numeric types and = for string and bool types. WHERE is resolved before set algebra, so each side of a UNION/INTERSECTION can have its own WHERE clause.
+**WHERE** — Filters elements by property value. Placed after a set name. Supports >, <, =, >=, <= for numeric types and = for string and bool types. WHERE is resolved before set algebra, so each side of a UNION/INTERSECTION can have its own WHERE clause. Multiple conditions can be chained with logical operators.
+
+**FILTER** — Alias for WHERE. Can be used interchangeably in all contexts, including with logical operators.
+
+### Logical operators
+
+Logical operators chain multiple conditions in WHERE or FILTER clauses. Each condition follows the form `<key> <comparator> <value>`. Operators are evaluated left to right.
+
+**AND** — Intersection of both conditions. Returns elements matching both.
+
+**OR** — Union of both conditions. Returns elements matching either.
+
+**NOT** — Difference. Returns elements matching the left condition but not the right.
+
+**XOR** — Symmetric difference. Returns elements matching exactly one condition but not both.
+
+**NAND** — Complement of AND. Returns all elements of the original set except those matching both conditions.
+
+**NOR** — Complement of OR. Returns all elements of the original set except those matching either condition.
 
 ### Set algebra operators
 
@@ -220,6 +244,8 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 
 `TRASH SETS <name> <name> ...` — Soft-deletes one or more sets (recoverable).
 
+`RESTORE <name>` — Restores a soft-deleted set from trash, re-linking all memberships.
+
 `DELETE SETS <name> <name> ...` — Permanently deletes one or more sets.
 
 `CLEAR CACHE` — Deletes all cached intermediate result sets.
@@ -239,3 +265,19 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 `GET ELEMENTS OF <Set> WHERE <key> <= <value>` — Lists elements where property is less than or equal to value.
 
 `GET ELEMENTS OF <Set> WHERE <key> > <value> UNION <Set> WHERE <key> > <value>` — WHERE clauses apply per-set before the UNION.
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> AND <key> = <value>` — Elements matching both conditions (intersection).
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> OR <key> = <value>` — Elements matching either condition (union).
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> NOT <key> = <value>` — Elements matching the first condition but not the second (difference).
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> XOR <key> = <value>` — Elements matching exactly one condition (symmetric difference).
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> NAND <key> = <value>` — All elements of the set except those matching both conditions.
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> NOR <key> = <value>` — All elements of the set except those matching either condition.
+
+`GET ELEMENTS OF <Set> WHERE <key> = <value> AND <key> > <value> AND <key> < <value>` — Three or more conditions can be chained. Evaluated left to right.
+
+`GET ELEMENTS OF <Set> FILTER <key> = <value> AND <key> = <value>` — FILTER works identically to WHERE, including with logical operators.

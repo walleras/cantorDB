@@ -3,9 +3,9 @@
 ## Near future
 - [ ] WAL support
 - [ ] `BEGIN/COMMIT` atomic transaction support
-- [ ] Logical operators
-- [ ] `FILTER` support
-- [ ] `RESTORE` support
+- [x] Logical operators
+- [x] `FILTER` support
+- [x] `RESTORE` support
 
 
 ## Far future

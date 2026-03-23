@@ -11,6 +11,8 @@ GET ELEMENTS OF Animals
 GET ELEMENTS OF UNIVERSAL
 GET ELEMENTS OF CACHE
 GET SETS OF Animals
+GET ALL SETS
+GET CACHE SETS
 GET CARDINALITY OF Animals
 GET PROPERTIES OF Dog
 GET PROPERTY speed FROM Dog
@@ -253,6 +255,7 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 `SAVE <filename>` — Saves the database to a .cdb file.
 
 `LOAD <filename>` — Loads a database from a .cdb file.
+
 
 `GET ELEMENTS OF <Set> WHERE <key> > <value>` — Lists elements where property is greater than value.
 

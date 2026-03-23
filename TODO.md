@@ -29,6 +29,9 @@
 - [ ] `find/query by property` — filter sets by property values // This kind of already exists...
 - [ ] Storage of documents and files within set properties
 
+## Consistency cleanup
+- [ ] `create_set` error message should include the duplicate name
+
 ## Never
 - [ ] On disk persistance
 - [ ] `cartesian_product` — A × B

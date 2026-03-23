@@ -27,6 +27,8 @@ static string is_superset_query(cantordb& db, vector<Token>& tokens, int& pos, s
 static string is_disjoint_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_proper_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
 static string is_equiv_query(cantordb& db, vector<Token>& tokens, int& pos, string iset);
+static bool is_logical_op(TokenType t);
+static Token filter_operation(cantordb& db, vector<Token>& tokens, int operator_pos);
 static void where_collapse_pass(cantordb& db, vector<Token>& tokens);
 static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos);
 static string create_query(cantordb& db, vector<Token>& tokens, int& pos);
@@ -304,17 +306,90 @@ static void where_collapse_pass(cantordb& db, vector<Token>& tokens) {
 				tokens.push_back(error_token("Syntax Error: WHERE must follow a set name."));
 				return;
 			}
+			string original_set = tokens[i - 1].value;
 			Set* result = handle_where(db, tokens, i);
 			if(!result) {
 				tokens.clear();
 				tokens.push_back(error_token(db.error_message));
 				return;
 			}
+			// Erase from WHERE through value: [i] WHERE [i+1] property [i+2] comparator [i+3] value
+			int erase_end = i + 4;
+
+			// Check for chained logical operators
+			while(erase_end < (int)tokens.size() && is_logical_op(tokens[erase_end].type)) {
+				TokenType logic_op = tokens[erase_end].type;
+				int cond_start = erase_end + 1;
+
+				if(cond_start + 2 >= (int)tokens.size()) {
+					tokens.clear();
+					tokens.push_back(error_token("Syntax Error: Expected property comparator value after logical operator."));
+					return;
+				}
+
+				// Build temporary tokens to reuse handle_where
+				vector<Token> temp;
+				temp.push_back(Token {TOK_IDENTIFIER, original_set, -1, nullptr});
+				temp.push_back(Token {TOK_WHERE, "WHERE", -1, nullptr});
+				temp.push_back(tokens[cond_start]);     // prop
+				temp.push_back(tokens[cond_start + 1]); // comparator
+				temp.push_back(tokens[cond_start + 2]); // value
+
+				Set* rhs = handle_where(db, temp, 1);
+				if(!rhs) {
+					tokens.clear();
+					tokens.push_back(error_token(db.error_message));
+					return;
+				}
+
+				Set* combined = nullptr;
+				switch(logic_op) {
+					case TOK_AND:
+						combined = db.set_intersection(result, rhs);
+						break;
+					case TOK_OR:
+						combined = db.set_union(result, rhs);
+						break;
+					case TOK_XOR:
+						combined = db.symmetric_difference(result, rhs);
+						break;
+					case TOK_NOT:
+						combined = db.set_difference(result, rhs);
+						break;
+					case TOK_NAND: {
+						Set* both = db.set_intersection(result, rhs);
+						if(!both) { tokens.clear(); tokens.push_back(error_token(db.error_message)); return; }
+						Set* orig = db.set_index[original_set];
+						if(!orig) { tokens.clear(); tokens.push_back(error_token("Error: Original set \"" + original_set + "\" not found.")); return; }
+						combined = db.set_difference(orig, both);
+						break;
+					}
+					case TOK_NOR: {
+						Set* either = db.set_union(result, rhs);
+						if(!either) { tokens.clear(); tokens.push_back(error_token(db.error_message)); return; }
+						Set* orig = db.set_index[original_set];
+						if(!orig) { tokens.clear(); tokens.push_back(error_token("Error: Original set \"" + original_set + "\" not found.")); return; }
+						combined = db.set_difference(orig, either);
+						break;
+					}
+					default:
+						tokens.clear();
+						tokens.push_back(error_token("Syntax Error: Unknown logical operator."));
+						return;
+				}
+
+				if(!combined) {
+					tokens.clear();
+					tokens.push_back(error_token(db.error_message));
+					return;
+				}
+				result = combined;
+				erase_end = cond_start + 3;
+			}
+
 			// Replace the set token with the filtered result
 			tokens[i - 1].value = result->set_name;
 			tokens[i - 1].result = result;
-			// Erase from WHERE through value: [i] WHERE [i+1] property [i+2] comparator [i+3] value
-			int erase_end = i + 4;
 			if(erase_end > (int)tokens.size()) erase_end = (int)tokens.size();
 			tokens.erase(tokens.begin() + i, tokens.begin() + erase_end);
 			i--; // re-check in case of chained WHERE
@@ -488,7 +563,7 @@ static string rename_set_query(cantordb& db, vector<Token>& tokens, int& pos) {
 	return db.error_message;
 }
 
-static string rename_property_query(cantordb& db, vector<Token>& tokens, int& pos) {
+static string rename_property_query(cantordb& /*db*/, vector<Token>& /*tokens*/, int& /*pos*/) {
 	return "Not yet implemented.";
 }
 
@@ -1013,7 +1088,7 @@ static void element_collapse_pass(cantordb& db, vector<Token>& tokens) {
 		for(int i = 0; i < (int)tokens.size(); i++) {
 			if(tokens[i].priority == pri && (tokens[i].type == TOK_UNION ||
 			    tokens[i].type == TOK_INTER || tokens[i].type == TOK_DIFF ||
-			    tokens[i].type == TOK_SYMDIFF)) {
+			    tokens[i].type == TOK_SYMDIFF || tokens[i].type == TOK_FILTER)) {
 				actual = i;
 				break;
 			}
@@ -1021,28 +1096,123 @@ static void element_collapse_pass(cantordb& db, vector<Token>& tokens) {
 		if(actual == -1) continue;
 
 		Token result;
-		switch(tokens[actual].type) {
+		TokenType tok_type = tokens[actual].type;
+		switch(tok_type) {
 			case TOK_UNION:  result = union_operation(db, tokens, actual); break;
 			case TOK_INTER:  result = intersection_operation(db, tokens, actual); break;
 			case TOK_DIFF:   result = difference_operation(db, tokens, actual); break;
 			case TOK_SYMDIFF: result = symdiff_operation(db, tokens, actual); break;
+			case TOK_FILTER: result = filter_operation(db, tokens, actual); break;
 			default: continue;
 		}
 
 		if(result.type == TOK_EOF) {
-			// Error — replace everything with the error token
 			tokens.clear();
 			tokens.push_back(result);
 			return;
 		}
 
-		tokens.erase(tokens.begin() + actual - 1, tokens.begin() + actual + 2);
-		tokens.insert(tokens.begin() + actual - 1, result);
+		if(tok_type != TOK_FILTER) {
+			tokens.erase(tokens.begin() + actual - 1, tokens.begin() + actual + 2);
+			tokens.insert(tokens.begin() + actual - 1, result);
+		}
 	}
 }
 
 static Token error_token(const string& message) {
 	return Token {TOK_EOF, message, -1, nullptr};
+}
+
+static bool is_logical_op(TokenType t) {
+	return t == TOK_AND || t == TOK_OR || t == TOK_NOT ||
+	       t == TOK_NAND || t == TOK_NOR || t == TOK_XOR;
+}
+
+static Token filter_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {
+	if(operator_pos < 1) {
+		return error_token("Syntax Error: FILTER must follow a set name.");
+	}
+	if(tokens[operator_pos - 1].type != TOK_IDENTIFIER) {
+		return error_token("Syntax Error: FILTER must follow a set name.");
+	}
+
+	string original_set = tokens[operator_pos - 1].value;
+
+	Set* result = handle_where(db, tokens, operator_pos);
+	if(!result) {
+		return error_token(db.error_message);
+	}
+
+	int erase_end = operator_pos + 4;
+
+	while(erase_end < (int)tokens.size() && is_logical_op(tokens[erase_end].type)) {
+		TokenType logic_op = tokens[erase_end].type;
+		int cond_start = erase_end + 1;
+
+		if(cond_start + 2 >= (int)tokens.size()) {
+			return error_token("Syntax Error: Expected property comparator value after logical operator.");
+		}
+
+		vector<Token> temp;
+		temp.push_back(Token {TOK_IDENTIFIER, original_set, -1, nullptr});
+		temp.push_back(Token {TOK_FILTER, "FILTER", 0, nullptr});
+		temp.push_back(tokens[cond_start]);     // prop
+		temp.push_back(tokens[cond_start + 1]); // comparator
+		temp.push_back(tokens[cond_start + 2]); // value
+
+		Set* rhs = handle_where(db, temp, 1);
+		if(!rhs) {
+			return error_token(db.error_message);
+		}
+
+		Set* combined = nullptr;
+		switch(logic_op) {
+			case TOK_AND:
+				combined = db.set_intersection(result, rhs);
+				break;
+			case TOK_OR:
+				combined = db.set_union(result, rhs);
+				break;
+			case TOK_XOR:
+				combined = db.symmetric_difference(result, rhs);
+				break;
+			case TOK_NOT: {
+				combined = db.set_difference(result, rhs);
+				break;
+			}
+			case TOK_NAND: {
+				Set* both = db.set_intersection(result, rhs);
+				if(!both) { return error_token(db.error_message); }
+				Set* orig = db.set_index[original_set];
+				if(!orig) { return error_token("Error: Original set \"" + original_set + "\" not found."); }
+				combined = db.set_difference(orig, both);
+				break;
+			}
+			case TOK_NOR: {
+				Set* either = db.set_union(result, rhs);
+				if(!either) { return error_token(db.error_message); }
+				Set* orig = db.set_index[original_set];
+				if(!orig) { return error_token("Error: Original set \"" + original_set + "\" not found."); }
+				combined = db.set_difference(orig, either);
+				break;
+			}
+			default:
+				return error_token("Syntax Error: Unknown logical operator.");
+		}
+
+		if(!combined) {
+			return error_token(db.error_message);
+		}
+		result = combined;
+		erase_end = cond_start + 3; // consumed: logical_op prop comparator value
+	}
+
+	if(erase_end > (int)tokens.size()) erase_end = (int)tokens.size();
+	tokens.erase(tokens.begin() + operator_pos - 1, tokens.begin() + erase_end);
+	tokens.insert(tokens.begin() + operator_pos - 1,
+		Token {TOK_IDENTIFIER, result->set_name, -1, result});
+
+	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
 }
 
 static Token union_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {

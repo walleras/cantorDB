@@ -163,6 +163,18 @@ Token classify_word(string word) {
 		return Token {TOK_LOAD, word, -1, nullptr};
 	} else if(lower_word == "keys") {
 		return Token {TOK_KEY, word, -1, nullptr};
+	} else if(lower_word == "and") {
+		return Token {TOK_AND, word, 0, nullptr};
+	} else if(lower_word == "or") {
+		return Token {TOK_OR, word, 0, nullptr};
+	} else if(lower_word == "not") {
+		return Token {TOK_NOT, word, 0, nullptr};
+	} else if(lower_word == "nand") {
+		return Token {TOK_NAND, word, 0, nullptr};
+	} else if(lower_word == "nor") {
+		return Token {TOK_NOR, word, 0, nullptr};
+	} else if(lower_word == "xor") {
+		return Token {TOK_XOR, word, 0, nullptr};
 	} else {
 		return Token {TOK_IDENTIFIER, word, -1, nullptr};
 	}

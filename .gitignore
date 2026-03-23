@@ -1,16 +1,60 @@
+# Build artifacts
+build/
 *.exe
 *.o
 *.obj
+*.a
+*.lib
+*.dll
 *.tmp
+
+# Database files
+*.cdb
 *.db
+!datasets/periodic_table.cdb
+
+# Logs and test output
 *.log
+*.csv
 test_output*.txt
+
+# SQLite (benchmark dependency, not part of project)
+sqlite-amalgamation-*/
+sqlite-amalgamation-*.zip
+
+# Dataset scripts and generated files
+datasets/gen_grammar.py
+datasets/gen_grammar_seql.py
+datasets/grammar_commands.seql
+datasets/grammar_resolve.py
+datasets/eng_unimorph.tsv
+datasets/english_grammar.cdb
+datasets/english_grammar.cpp
+
+# Test files (keep only test_cantordb.cpp and test_parser.cpp)
+tests/test_benchmark_*.cpp
+tests/test_hyper_stress.cpp
+tests/test_logical_ops.cpp
+tests/test_oom.cpp
+tests/test_rename.cpp
+tests/test_retail_stress.cpp
+tests/test_speed*.cpp
+tests/test_stress.cpp
+
+# Claude Code local settings
+.claude/
+
+# Reports (generated)
 SQLITE_LESSONS_REPORT.md
+CTO_REPORT_2026.md
+BOARD_REPORT_2026.md
+REPORTS_2026_EXPANDED.md
+REPORTS_2026.md
 
 # netdb (separate project)
 src/netdb/
 
-# Old root-level files
+# Old root-level files (removed)
 /setdb.cpp
 /setdb.h
 /netdb.cpp
@@ -26,11 +70,3 @@ src/netdb/
 /tests/test_memory.cpp
 /tests/test_validation.cpp
 /MemorySystem/
-
-# Generated test artifacts
-tests/*.exe
-*.csv
-CTO_REPORT_2026.md
-BOARD_REPORT_2026.md
-REPORTS_2026_EXPANDED.md
-REPORTS_2026.md

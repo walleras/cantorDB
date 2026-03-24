@@ -2,7 +2,7 @@
 
 ## Introduction
 
-CantorDB is a (for now) in-memory, set-theoretic database written in C++. Rather that organizing data round tables, rows, or graph edges, it takes its conceptual ground from naive set theory.
+CantorDB is an in-memory, set-theoretic database written in C++. Rather that organizing data round tables, rows, or graph edges, it takes its conceptual ground from naive set theory.
 The core primitive is the set which is a named node that can contain other sets within it, belong to other sets and have key value properties. Every set created is automatically part of the universal set on creation, giving you a global namespace for enumeration and complement operations.
 The database is named in honor of George Cantor, whose insight was that sets was not just a part of the mathematical world but rather the fabric upon which it was based. CantorDB is making the same proposition as it relates to databases.
 

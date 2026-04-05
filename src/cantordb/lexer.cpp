@@ -26,6 +26,10 @@ vector<Token> lexer(const string& query) {
 				Token tok = classify_word(word);
 				if(dots_front == dots_back) {
 					tok.priority = dots_front;
+				} else {
+					vector<Token> err;
+					err.push_back(Token {TOK_EOF, "Syntax Error: Mismatched dots around operator", -1, nullptr});
+					return err;
 				}
 				tokens.push_back(tok);
 			}
@@ -77,7 +81,7 @@ string read_identifier(const string& query, int& i) {
 		i++;
 	}
 	if(i >= (int)query.size()) {
-		return "ERROR_UNCLOSED_QUOTE";
+		return "Syntax Error: Unclosed Quote";
 	}
 	i++; // skip closing quote
 	return word;
@@ -85,7 +89,7 @@ string read_identifier(const string& query, int& i) {
 
 string read_word(const string& query, int& i) {
 	string word;
-	while (i < (int)query.size() && !isspace(query[i]) && (isalnum(query[i]) || query[i] == '_')) {
+	while (i < (int)query.size() && !isspace(query[i]) && (isalnum(query[i]) || query[i] == '_' || query[i] == '-')) {
 		word.push_back(query[i]);
 		i++;
 	}
@@ -139,7 +143,7 @@ Token classify_word(string word) {
 		return Token {TOK_REMOVE, word, -1, nullptr};
 	} else if(lower_word == "delete") {
 		return Token {TOK_DELETE, word, -1, nullptr};
-	} else if(lower_word == "property") {
+	} else if(lower_word == "property" || lower_word == "properties") {
 		return Token {TOK_PROPERTY, word, -1, nullptr};
 	} else if(lower_word == "cardinality") {
 		return Token {TOK_CARDINALITY, word, -1, nullptr};

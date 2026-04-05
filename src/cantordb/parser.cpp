@@ -77,6 +77,14 @@ string parse_query(cantordb& db, const string& query) {
 		return tokens[0].value;
 	}
 
+	// If the entire query collapsed to a single result set, display its elements
+	if(tokens[pos].type == TOK_IDENTIFIER && tokens[pos].result != nullptr) {
+		string result = db.list_elements(tokens[0].value);
+		if(!db.error_message.empty()) return db.error_message;
+		if(result.empty()) return "(empty)";
+		return result;
+	}
+
 	QueryType type = parse_header(tokens, pos);
 
 	if(type == ERR) {

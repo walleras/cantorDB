@@ -71,7 +71,7 @@ int main() {
 
 	cout << "CantorDB Shell" << endl;
 	cout << "Type HELP for a list of commands." << endl;
-	cout << "Try: LOAD datasets/periodic_table" << endl;
+	cout << "Try: LOAD ../datasets/periodic_table" << endl;
 	cout << endl;
 
 	string query;

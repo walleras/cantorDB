@@ -10,10 +10,10 @@ SeQL (Pronounced SehQL) is a set query language designed to manipulate and query
 GET ELEMENTS OF Animals
 GET ELEMENTS OF UNIVERSAL
 GET ELEMENTS OF CACHE
+GET ELEMENTS OF TRASH
 GET SETS OF Animals
-GET ALL SETS
-GET CACHE SETS
 GET CARDINALITY OF Animals
+GET CARDINALITY OF UNIVERSAL
 GET PROPERTIES OF Dog
 GET PROPERTY speed FROM Dog
 GET KEYS OF Dog
@@ -81,6 +81,8 @@ Dot notation is different. The dots sit directly next to the operator they are m
 **UNIVERSAL** — Refers to the universal set containing all user-created sets. Used with GET ELEMENTS OF UNIVERSAL or GET KEYS OF UNIVERSAL.
 
 **CACHE** — Refers to the cache set containing intermediate result sets from set algebra operations. Used with GET ELEMENTS OF CACHE.
+
+**TRASH** — Refers to the trash set containing soft-deleted sets. Used with GET ELEMENTS OF TRASH. Sets in TRASH can be recovered with RESTORE.
 
 ### Relationship keywords
 
@@ -178,15 +180,25 @@ This applies to all set albegra operators (UNION, INTERSECTION, DIFFERENCE, SYMD
 
 ## Query snippets
 
+> **Note:** Set names are case-sensitive. `Animals` and `animals` are different sets.
+
 `GET ELEMENTS OF <Set>` — Lists all elements of a set.
 
 `GET ELEMENTS OF UNIVERSAL` — Lists every set in the database.
 
 `GET ELEMENTS OF CACHE` — Lists all cached intermediate result sets.
 
+`GET ELEMENTS OF TRASH` — Lists all soft-deleted sets awaiting restore or permanent deletion.
+
 `GET SETS OF <Set>` — Lists all sets that a set belongs to.
 
 `GET CARDINALITY OF <Set>` — Returns the number of elements in a set.
+
+`GET CARDINALITY OF UNIVERSAL` — Returns the total number of user-created sets.
+
+`GET CARDINALITY OF CACHE` — Returns the number of cached result sets.
+
+`GET CARDINALITY OF TRASH` — Returns the number of soft-deleted sets.
 
 `GET CARDINALITY OF <Set> WHERE <key> > <value>` — Returns the count of elements matching a filter.
 

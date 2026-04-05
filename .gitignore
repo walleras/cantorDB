@@ -44,6 +44,7 @@ tests/test_stress.cpp
 
 # Claude Code local settings
 .claude/
+scheduled_end
 
 # Reports (generated)
 SQLITE_LESSONS_REPORT.md
@@ -54,6 +55,9 @@ REPORTS_2026.md
 
 # netdb (separate project)
 src/netdb/
+
+# R bindings (separate package)
+rcantordb/
 
 # Old root-level files (removed)
 /setdb.cpp

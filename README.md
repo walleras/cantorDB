@@ -148,7 +148,7 @@ Set* a      = db->set_intersection("Period4", "Ferromagnetic");
 
 ## AI policy
 
-This database is a hobby project of mine due to my love for set theory. As such, I use AI to automate parts that I do not like such as writing tests or pushing commits. As such, while Claude is a co-author, and did assist in catching my silly mistakes, I handwrote this code and use it for tests, generating documentations, find and repalce, and commit messages. I certainly am not vibecoding it.
+This database is a hobby project of mine due to my love for set theory. As such, I use AI to automate parts that I do not like such as writing tests or pushing commits. As such, while Claude is a co-author, and did assist in catching my silly mistakes, I handwrote this code and use it for tests, generating documentations, find and replace, and commit messages. I certainly am not vibecoding it.
 
 ## Roadmap
 

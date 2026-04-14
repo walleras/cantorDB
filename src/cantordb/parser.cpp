@@ -471,7 +471,7 @@ static Set* dispatch_where_double(cantordb& db, const string& set_name, const st
 	}
 }
 
-static Set* dispatch_where_long(cantordb& db, const string& set_name, const string& property, TokenType comparator, long val) {
+static Set* dispatch_where_long(cantordb& db, const string& set_name, const string& property, TokenType comparator, int64_t val) {
 	switch(comparator) {
 		case TOK_GREATER_THAN: return db.where_elements_greater_than(set_name, property, val);
 		case TOK_LESSER_THAN:  return db.where_elements_lesser_than(set_name, property, val);
@@ -548,7 +548,7 @@ static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos) {
 		return dispatch_where_double(db, set_name, property, comparator, num_val);
 	}
 	if(db.long_property_index.find(property) != db.long_property_index.end()) {
-		return dispatch_where_long(db, set_name, property, comparator, (long)num_val);
+		return dispatch_where_long(db, set_name, property, comparator, (int64_t)num_val);
 	}
 
 	db.error_message = "Error: No numeric property \"" + property + "\" found in any index.";
@@ -752,7 +752,7 @@ static string update_property_query(cantordb& db, vector<Token>& tokens, int& po
 			if(tokens[pos].type != TOK_NUM) {
 				return "Syntax Error: Property \"" + key + "\" is long type, expected a number.";
 			}
-			long val = stol(tokens[pos].value);
+			int64_t val = (int64_t)stoll(tokens[pos].value);
 			if(!db.update_property(set_name, key, val)) {
 				return db.error_message;
 			}
@@ -851,7 +851,7 @@ static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos) 
 			// Check registered type to distinguish int vs long
 			auto it = db.property_types.find(key);
 			if(it != db.property_types.end() && it->second == LONG) {
-				if(!db.add_property(key, (long)num_val, set_name)) {
+				if(!db.add_property(key, (int64_t)num_val, set_name)) {
 					return db.error_message;
 				}
 			} else {

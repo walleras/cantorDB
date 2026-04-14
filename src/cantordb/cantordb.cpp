@@ -313,7 +313,7 @@ bool cantordb::add_property(string key, bool value, string set_name) {
 	return true;
 }
 
-bool cantordb::add_property(string key, long value, string set_name) {
+bool cantordb::add_property(string key, int64_t value, string set_name) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -905,7 +905,7 @@ bool cantordb::is_proper_subset(Set* set_a, Set* set_b) {
 	if(set_a->has_element.size() >= set_b->has_element.size()) return false;
 	return is_subset(set_a, set_b);
 }
-variant<bool, long, string, int, double> cantordb::get_property(string set_name, string key_name) {
+variant<bool, int64_t, string, int, double> cantordb::get_property(string set_name, string key_name) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -1007,7 +1007,7 @@ bool cantordb::get_property_safe_bool(string set_name, string key_name) {
 	return set_index[set_name]->key_bool[key_name];
 }
 
-long cantordb::get_property_safe_long(string set_name, string key_name) {
+int64_t cantordb::get_property_safe_long(string set_name, string key_name) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return 0L; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -1147,7 +1147,7 @@ bool cantordb::update_property(string set_name, string key_name, bool value) {
 	return true;
 }
 
-bool cantordb::update_property(string set_name, string key_name, long value) {
+bool cantordb::update_property(string set_name, string key_name, int64_t value) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return false; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -1516,7 +1516,7 @@ static void read_properties(ifstream& in, Set* s) {
 			bool val; in.read(reinterpret_cast<char*>(&val), sizeof(val));
 			s->key_bool[key] = val;
 		} else if (tag == 4) {
-			long val; in.read(reinterpret_cast<char*>(&val), sizeof(val));
+			int64_t val; in.read(reinterpret_cast<char*>(&val), sizeof(val));
 			s->key_long[key] = val;
 		}
 	}
@@ -1632,7 +1632,7 @@ Set* cantordb::where_elements_equal_than(string set_name, string property, int v
 
 // ---- long overloads ----
 
-Set* cantordb::where_elements_greater_than(string set_name, string property, long value) {
+Set* cantordb::where_elements_greater_than(string set_name, string property, int64_t value) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -1668,7 +1668,7 @@ Set* cantordb::where_elements_greater_than(string set_name, string property, lon
 	return result;
 }
 
-Set* cantordb::where_elements_lesser_than(string set_name, string property, long value) {
+Set* cantordb::where_elements_lesser_than(string set_name, string property, int64_t value) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;
@@ -1704,7 +1704,7 @@ Set* cantordb::where_elements_lesser_than(string set_name, string property, long
 	return result;
 }
 
-Set* cantordb::where_elements_equal_than(string set_name, string property, long value) {
+Set* cantordb::where_elements_equal_than(string set_name, string property, int64_t value) {
 	if(emergency_shut_off) { error_message = "Error: Database emergency shut off."; return nullptr; }
 	if(set_index.find(set_name) == set_index.end()) {
 		EC = ER_SET_NOT_FOUND;

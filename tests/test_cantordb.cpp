@@ -837,7 +837,7 @@ int main() {
 		db.add_property("name", string("widget"), "Item");
 		db.add_property("price", 9.99, "Item");
 		db.add_property("active", true, "Item");
-		db.add_property("serial", 123456L, "Item");
+		db.add_property("serial", (int64_t)123456, "Item");
 
 		auto v_int = db.get_property("Item", "count");
 		check("get_property int returns correct value", get<int>(v_int) == 42);
@@ -852,7 +852,7 @@ int main() {
 		check("get_property bool returns correct value", get<bool>(v_bool) == true);
 
 		auto v_long = db.get_property("Item", "serial");
-		check("get_property long returns correct value", get<long>(v_long) == 123456L);
+		check("get_property long returns correct value", get<int64_t>(v_long) == (int64_t)123456);
 
 		// nonexistent set
 		db.get_property("Ghost", "count");
@@ -940,10 +940,10 @@ int main() {
 	{
 		cantordb db("test");
 		db.create_set("Item");
-		db.add_property("serial", 999999L, "Item");
+		db.add_property("serial", (int64_t)999999, "Item");
 		db.add_property("count", 5, "Item");
 
-		check("safe_long returns correct value", db.get_property_safe_long("Item", "serial") == 999999L);
+		check("safe_long returns correct value", db.get_property_safe_long("Item", "serial") == (int64_t)999999);
 
 		db.get_property_safe_long("Item", "count");
 		check("safe_long wrong type sets ER_KEY_WRONG_TYPE", db.EC == ER_KEY_WRONG_TYPE);
@@ -959,7 +959,7 @@ int main() {
 		db.add_property("name", string("widget"), "Item");
 		db.add_property("price", 9.99, "Item");
 		db.add_property("active", true, "Item");
-		db.add_property("serial", 123456L, "Item");
+		db.add_property("serial", (int64_t)123456, "Item");
 
 		check("delete int property returns true", db.delete_property("Item", "count"));
 		check("deleted key removed from key_index",
@@ -1066,10 +1066,10 @@ int main() {
 	{
 		cantordb db("test");
 		db.create_set("Item");
-		db.add_property("serial", 100L, "Item");
+		db.add_property("serial", (int64_t)100, "Item");
 
-		check("update long returns true", db.update_property("Item", "serial", 200L));
-		check("updated long value is correct", db.set_index["Item"]->key_long["serial"] == 200L);
+		check("update long returns true", db.update_property("Item", "serial", (int64_t)200));
+		check("updated long value is correct", db.set_index["Item"]->key_long["serial"] == (int64_t)200);
 	}
 	cout << endl;
 
@@ -1082,7 +1082,7 @@ int main() {
 		db.add_property("name", string("widget"), "Item");
 		db.add_property("price", 9.99, "Item");
 		db.add_property("active", true, "Item");
-		db.add_property("serial", 123456L, "Item");
+		db.add_property("serial", (int64_t)123456, "Item");
 
 		string keys = db.list_property_keys("Item");
 		check("list_property_keys contains count: int", keys.find("count: int") != string::npos);
@@ -1184,7 +1184,7 @@ int main() {
 	{
 		cantordb db("test");
 		db.create_set("Item");
-		db.add_property("serial", 123456L, "Item");
+		db.add_property("serial", (int64_t)123456, "Item");
 		db.add_property("count", 5, "Item");
 
 		string props = db.list_long_properties("Item");

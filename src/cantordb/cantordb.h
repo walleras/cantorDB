@@ -28,7 +28,7 @@ struct Set {
 	map<string, string> key_value;
 	map<string, double> key_decimal;
 	map<string, bool> key_bool;
-	map<string, long> key_long;
+	map<string, int64_t> key_long;
 	vector<Set*> member_of;
 	vector<Set*> has_element;
 };
@@ -59,7 +59,7 @@ public:
 	bool add_property(string key, string value, string set_name);
 	bool add_property(string key, double value, string set_name);
 	bool add_property(string key, bool value, string set_name);
-	bool add_property(string key, long value, string set_name);
+	bool add_property(string key, int64_t value, string set_name);
 	bool delete_set(string set_name, bool safe = true);
 	bool restore_set(string set_name);
 	bool add_member(string set_name, string element_name);
@@ -84,12 +84,12 @@ public:
 	bool is_equal(Set* set_a, Set* set_b);
 	bool is_proper_subset(string set_a_name, string set_b_name);
 	bool is_proper_subset(Set* set_a, Set* set_b);
-	variant<bool, long, string, int, double> get_property(string set_name, string key_name);
+	variant<bool, int64_t, string, int, double> get_property(string set_name, string key_name);
 	int get_property_safe_int(string set_name, string key_name);
 	string get_property_safe_string(string set_name, string key_name);
 	double get_property_safe_double(string set_name, string key_name);
 	bool get_property_safe_bool(string set_name, string key_name);
-	long get_property_safe_long(string set_name, string key_name);
+	int64_t get_property_safe_long(string set_name, string key_name);
 	bool create_property(string property_name, string type);
 	bool add_property(string property_name, string set_name);
 	bool delete_property(string set_name, string key_name);
@@ -97,7 +97,7 @@ public:
 	bool update_property(string set_name, string key_name, string value);
 	bool update_property(string set_name, string key_name, double value);
 	bool update_property(string set_name, string key_name, bool value);
-	bool update_property(string set_name, string key_name, long value);
+	bool update_property(string set_name, string key_name, int64_t value);
 	string list_all_keys();
 	string list_property_keys(string set_name);
 	string list_properties(string set_name);
@@ -115,13 +115,13 @@ public:
 	bool rename_set(string set_name, string set_new_name);
 	bool is_element(string set_a_name, string set_b_name);
 	Set* where_elements_greater_than(string set_name, string property, int value);
-	Set* where_elements_greater_than(string set_name, string property, long value);
+	Set* where_elements_greater_than(string set_name, string property, int64_t value);
 	Set* where_elements_greater_than(string set_name, string property, double value);
 	Set* where_elements_lesser_than(string set_name, string property, int value);
-	Set* where_elements_lesser_than(string set_name, string property, long value);
+	Set* where_elements_lesser_than(string set_name, string property, int64_t value);
 	Set* where_elements_lesser_than(string set_name, string property, double value);
 	Set* where_elements_equal_than(string set_name, string property, int value);
-	Set* where_elements_equal_than(string set_name, string property, long value);
+	Set* where_elements_equal_than(string set_name, string property, int64_t value);
 	Set* where_elements_equal_than(string set_name, string property, double value);
 	Set* where_elements_equal_than(string set_name, string property, string value);
 	Set* where_elements_equal_than(string set_name, string property, bool value);

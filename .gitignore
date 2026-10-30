@@ -75,3 +75,7 @@ rcantordb/
 /tests/test_memory.cpp
 /tests/test_validation.cpp
 /MemorySystem/
+
+# C3 rewrite build output
+src/cantordb/rewrite/obj/
+src/cantordb/rewrite/build/

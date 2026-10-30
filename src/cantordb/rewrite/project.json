@@ -1,0 +1,25 @@
+{
+  "langrev": "1",
+  "warnings": [ "no-unused" ],
+  "authors": [ ],
+  "version": "0.1.0",
+  "sources": [ "cantordb.c3", "roaring.c3" ],
+  "c-sources": [ "third_party/roaring.c" ],
+  "c-include-dirs": [ "third_party" ],
+  "cc": "gcc",
+  "target": "mingw-x64",
+  "link-args": [ "-municode", "-ldbghelp" ],
+  "build-dir": "build",
+  "output": "build",
+  "targets": {
+    "cantordb": {
+      "type": "static-lib"
+    },
+    "cantordb-smoke": {
+      "type": "executable",
+      "sources-override": [ "cantordb.c3", "roaring.c3", "tests/smoke.c3" ]
+    }
+  },
+  "cpu": "generic",
+  "opt": "O1"
+}

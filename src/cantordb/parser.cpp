@@ -3,6 +3,59 @@
 #include <string>
 #include <queue>
 
+// How the parser reaches into the database. The C++ backend exposes its containers directly; the
+// C3 backend (-DCANTORDB_C3, see c3bridge/) answers the same questions through accessor methods.
+#ifdef CANTORDB_C3
+static Set* find_set_(cantordb& db, const string& name) { return db.find_set(name); }
+static string set_name_of_(cantordb& db, Set* s) { return db.set_name_of(s); }
+static int key_type_(cantordb& db, const string& set_name, const string& key) { return db.key_type(set_name, key); }
+static int property_type_(cantordb& db, const string& property) { return db.property_type(property); }
+static bool load_into_(cantordb& db, const string& path) { return db.load(path); }
+#else
+static Set* find_set_(cantordb& db, const string& name) {
+	auto it = db.set_index.find(name);
+	return it == db.set_index.end() ? nullptr : it->second;
+}
+static string set_name_of_(cantordb&, Set* s) { return s->set_name; }
+static int key_type_(cantordb& db, const string& set_name, const string& key) {
+	Set* s = find_set_(db, set_name);
+	if(!s) return -1;
+	auto it = s->key_index.find(key);
+	return it == s->key_index.end() ? -1 : it->second;
+}
+static int property_type_(cantordb& db, const string& property) {
+	if(db.integer_property_index.find(property) != db.integer_property_index.end()) return INTEGER;
+	if(db.double_property_index.find(property) != db.double_property_index.end()) return DOUBLE;
+	if(db.long_property_index.find(property) != db.long_property_index.end()) return LONG;
+	auto it = db.property_types.find(property);
+	return it == db.property_types.end() ? -1 : (int)it->second;
+}
+static bool load_into_(cantordb& db, const string& path) {
+	cantordb* loaded = load_cantordb(path);
+	if(!loaded) return false;
+	// Delete all existing sets
+	for(auto& [name, s] : db.set_index) {
+		delete s;
+	}
+	// Move loaded state into db
+	db.name = loaded->name;
+	db.set_index = loaded->set_index;
+	db.property_types = loaded->property_types;
+	db.integer_property_index = loaded->integer_property_index;
+	db.string_property_index = loaded->string_property_index;
+	db.double_property_index = loaded->double_property_index;
+	db.bool_property_index = loaded->bool_property_index;
+	db.long_property_index = loaded->long_property_index;
+	db.memory_used = loaded->memory_used;
+	db.emergency_shut_off = false;
+	db.error_message = "";
+	// Prevent loaded's destructor from freeing the sets we just took
+	loaded->set_index.clear();
+	delete loaded;
+	return true;
+}
+#endif
+
 static ParserErrorCode PEC;
 static string parser_error;
 
@@ -179,7 +232,7 @@ string parse_query(cantordb& db, const string& query) {
 		string set_name = tokens[pos].value;
 		Set* comp = db.set_complement(set_name);
 		if(!comp) return db.error_message;
-		string result = db.list_elements(comp->set_name);
+		string result = db.list_elements(set_name_of_(db, comp));
 		if(result.empty()) return "(empty)";
 		return result;
 	}
@@ -224,29 +277,9 @@ string parse_query(cantordb& db, const string& query) {
 			return "Syntax Error: Expected file name after LOAD.";
 		}
 		string path = tokens[pos].value + ".cdb";
-		cantordb* loaded = load_cantordb(path);
-		if(!loaded) {
+		if(!load_into_(db, path)) {
 			return "Error: Failed to load database from " + path + ".";
 		}
-		// Delete all existing sets
-		for(auto& [name, s] : db.set_index) {
-			delete s;
-		}
-		// Move loaded state into db
-		db.name = loaded->name;
-		db.set_index = loaded->set_index;
-		db.property_types = loaded->property_types;
-		db.integer_property_index = loaded->integer_property_index;
-		db.string_property_index = loaded->string_property_index;
-		db.double_property_index = loaded->double_property_index;
-		db.bool_property_index = loaded->bool_property_index;
-		db.long_property_index = loaded->long_property_index;
-		db.memory_used = loaded->memory_used;
-		db.emergency_shut_off = false;
-		db.error_message = "";
-		// Prevent loaded's destructor from freeing the sets we just took
-		loaded->set_index.clear();
-		delete loaded;
 		return "Loaded database from " + path + ".";
 	}
 
@@ -391,7 +424,7 @@ static void where_collapse_pass(cantordb& db, vector<Token>& tokens) {
 					case TOK_NAND: {
 						Set* both = db.set_intersection(result, rhs);
 						if(!both) { tokens.clear(); tokens.push_back(error_token(db.error_message)); return; }
-						Set* orig = db.set_index[original_set];
+						Set* orig = find_set_(db, original_set);
 						if(!orig) { tokens.clear(); tokens.push_back(error_token("Error: Original set \"" + original_set + "\" not found.")); return; }
 						combined = db.set_difference(orig, both);
 						break;
@@ -399,7 +432,7 @@ static void where_collapse_pass(cantordb& db, vector<Token>& tokens) {
 					case TOK_NOR: {
 						Set* either = db.set_union(result, rhs);
 						if(!either) { tokens.clear(); tokens.push_back(error_token(db.error_message)); return; }
-						Set* orig = db.set_index[original_set];
+						Set* orig = find_set_(db, original_set);
 						if(!orig) { tokens.clear(); tokens.push_back(error_token("Error: Original set \"" + original_set + "\" not found.")); return; }
 						combined = db.set_difference(orig, either);
 						break;
@@ -420,7 +453,7 @@ static void where_collapse_pass(cantordb& db, vector<Token>& tokens) {
 			}
 
 			// Replace the set token with the filtered result
-			tokens[i - 1].value = result->set_name;
+			tokens[i - 1].value = set_name_of_(db, result);
 			tokens[i - 1].result = result;
 			if(erase_end > (int)tokens.size()) erase_end = (int)tokens.size();
 			tokens.erase(tokens.begin() + i, tokens.begin() + erase_end);
@@ -541,13 +574,14 @@ static Set* handle_where(cantordb& db, vector<Token>& tokens, int where_pos) {
 	// not based on how the user wrote the literal
 	double num_val = stod(tokens[p].value);
 
-	if(db.integer_property_index.find(property) != db.integer_property_index.end()) {
+	int ptype = property_type_(db, property);
+	if(ptype == INTEGER) {
 		return dispatch_where_int(db, set_name, property, comparator, (int)num_val);
 	}
-	if(db.double_property_index.find(property) != db.double_property_index.end()) {
+	if(ptype == DOUBLE) {
 		return dispatch_where_double(db, set_name, property, comparator, num_val);
 	}
-	if(db.long_property_index.find(property) != db.long_property_index.end()) {
+	if(ptype == LONG) {
 		return dispatch_where_long(db, set_name, property, comparator, (int64_t)num_val);
 	}
 
@@ -681,17 +715,15 @@ static string update_property_query(cantordb& db, vector<Token>& tokens, int& po
 	pos++;
 
 	// Check that the set exists
-	if(db.set_index.find(set_name) == db.set_index.end()) {
+	if(!find_set_(db, set_name)) {
 		return "Error: Set \"" + set_name + "\" not found.";
 	}
 
 	// Check that the property exists on the set
-	Set* s = db.set_index[set_name];
-	if(s->key_index.find(key) == s->key_index.end()) {
+	int type_tag = key_type_(db, set_name, key);
+	if(type_tag < 0) {
 		return "Error: Key \"" + key + "\" not found in set \"" + set_name + "\".";
 	}
-
-	int type_tag = s->key_index[key];
 
 	// Read the value token
 	if(tokens[pos].type != TOK_NUM && tokens[pos].type != TOK_IDENTIFIER) {
@@ -849,8 +881,7 @@ static string add_property_query(cantordb& db, vector<Token>& tokens, int& pos) 
 			}
 		} else {
 			// Check registered type to distinguish int vs long
-			auto it = db.property_types.find(key);
-			if(it != db.property_types.end() && it->second == LONG) {
+			if(property_type_(db, key) == LONG) {
 				if(!db.add_property(key, (int64_t)num_val, set_name)) {
 					return db.error_message;
 				}
@@ -1215,7 +1246,7 @@ static Token filter_operation(cantordb& db, vector<Token>& tokens, int operator_
 			case TOK_NAND: {
 				Set* both = db.set_intersection(result, rhs);
 				if(!both) { return error_token(db.error_message); }
-				Set* orig = db.set_index[original_set];
+				Set* orig = find_set_(db, original_set);
 				if(!orig) { return error_token("Error: Original set \"" + original_set + "\" not found."); }
 				combined = db.set_difference(orig, both);
 				break;
@@ -1223,7 +1254,7 @@ static Token filter_operation(cantordb& db, vector<Token>& tokens, int operator_
 			case TOK_NOR: {
 				Set* either = db.set_union(result, rhs);
 				if(!either) { return error_token(db.error_message); }
-				Set* orig = db.set_index[original_set];
+				Set* orig = find_set_(db, original_set);
 				if(!orig) { return error_token("Error: Original set \"" + original_set + "\" not found."); }
 				combined = db.set_difference(orig, either);
 				break;
@@ -1242,9 +1273,9 @@ static Token filter_operation(cantordb& db, vector<Token>& tokens, int operator_
 	if(erase_end > (int)tokens.size()) erase_end = (int)tokens.size();
 	tokens.erase(tokens.begin() + operator_pos - 1, tokens.begin() + erase_end);
 	tokens.insert(tokens.begin() + operator_pos - 1,
-		Token {TOK_IDENTIFIER, result->set_name, -1, result});
+		Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result});
 
-	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
+	return Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result};
 }
 
 static Token union_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {
@@ -1258,7 +1289,7 @@ static Token union_operation(cantordb& db, vector<Token>& tokens, int operator_p
 	if(!result) {
 		return error_token(db.error_message);
 	}
-	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
+	return Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result};
 }
 
 static Token intersection_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {
@@ -1272,7 +1303,7 @@ static Token intersection_operation(cantordb& db, vector<Token>& tokens, int ope
 	if(!result) {
 		return error_token(db.error_message);
 	}
-	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
+	return Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result};
 }
 
 static Token difference_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {
@@ -1286,7 +1317,7 @@ static Token difference_operation(cantordb& db, vector<Token>& tokens, int opera
 	if(!result) {
 		return error_token(db.error_message);
 	}
-	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
+	return Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result};
 }
 
 static Token symdiff_operation(cantordb& db, vector<Token>& tokens, int operator_pos) {
@@ -1300,7 +1331,7 @@ static Token symdiff_operation(cantordb& db, vector<Token>& tokens, int operator
 	if(!result) {
 		return error_token(db.error_message);
 	}
-	return Token {TOK_IDENTIFIER, result->set_name, -1, result};
+	return Token {TOK_IDENTIFIER, set_name_of_(db, result), -1, result};
 }
 
 static string is_query(cantordb& db, vector<Token>& tokens, int& pos) {

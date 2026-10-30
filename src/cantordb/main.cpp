@@ -1,4 +1,8 @@
+#ifdef CANTORDB_C3
+#include "c3bridge/cantordb.h"
+#else
 #include "cantordb.h"
+#endif
 #include "parser.h"
 #include <string>
 #include <iostream>

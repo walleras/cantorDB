@@ -3,7 +3,7 @@
   "warnings": [ "no-unused" ],
   "authors": [ ],
   "version": "0.1.0",
-  "sources": [ "cantordb.c3", "roaring.c3" ],
+  "sources": [ "cantordb.c3", "roaring.c3", "capi.c3" ],
   "c-sources": [ "third_party/roaring.c" ],
   "c-include-dirs": [ "third_party" ],
   "cc": "gcc",
@@ -14,6 +14,10 @@
   "targets": {
     "cantordb": {
       "type": "static-lib"
+    },
+    "cantordb-bridge": {
+      "type": "static-lib",
+      "c-sources-override": []
     },
     "cantordb-smoke": {
       "type": "executable",

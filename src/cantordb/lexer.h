@@ -3,7 +3,11 @@
 
 #include <string>
 #include <vector>
+#ifdef CANTORDB_C3
+#include "c3bridge/cantordb.h"
+#else
 #include "cantordb.h"
+#endif
 #include <cctype>
 #include <algorithm>
 

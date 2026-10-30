@@ -12,6 +12,8 @@ extern fn void roaring_bitmap_add(Bitmap* r, uint x);
 extern fn void roaring_bitmap_remove(Bitmap* r, uint x);
 extern fn bool roaring_bitmap_contains(Bitmap* r, uint val);
 extern fn ulong roaring_bitmap_get_cardinality(Bitmap* r);
+extern fn Bitmap* roaring_bitmap_of_ptr(usz n, uint* vals);
+extern fn void roaring_bitmap_and_inplace(Bitmap* r1, Bitmap* r2);
 extern fn Bitmap* roaring_bitmap_or(Bitmap* r1, Bitmap* r2);
 extern fn Bitmap* roaring_bitmap_and(Bitmap* r1, Bitmap* r2);
 extern fn Bitmap* roaring_bitmap_andnot(Bitmap* r1, Bitmap* r2);

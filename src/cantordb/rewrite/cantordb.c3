@@ -2,6 +2,7 @@ module cantordb;
 
 import std::collections::map, std::collections::list;
 import std::core::dstring;
+import std::sort;
 import std::io::file;
 import libc;
 import std::core::mem::alloc;
@@ -259,6 +260,7 @@ struct Set
 	Bitmap* has_element;
 	Bitmap* member_of;
 	HashMap{String, PropertyValue} properties;         // keys owned by the property registry
+	bool backlinked;                                   // false for computed results: their elements' member_of does not list this set
 }
 
 fn Set*? build_set(uint id, String name, Allocator heap)
@@ -269,6 +271,7 @@ fn Set*? build_set(uint id, String name, Allocator heap)
 	s.has_element = new_bitmap();
 	s.member_of = new_bitmap();
 	s.properties.init(heap);
+	s.backlinked = true;
 	return s;
 }
 
@@ -296,6 +299,101 @@ fn void Set.destroy(&self, Allocator heap)
 	alloc::free(heap, self);
 }
 
+// ---- value index ----
+//
+// One sorted column per property, built lazily by the first WHERE on it and rebuilt after the
+// property's values change (attach / update / delete, or a hard delete of a set that holds it).
+// Numeric properties sort by value; string properties support EQUAL only. Entries may name sets
+// that lost the property or were deleted: WHERE intersects with the property set to drop those.
+
+struct NumEntry
+{
+	union
+	{
+		long l;
+		double d;
+	}
+	uint id;
+}
+
+struct StrEntry
+{
+	String key;      // view into the set's property storage; the index is rebuilt before that can dangle
+	uint id;
+}
+
+fn int cmp_long(NumEntry a, NumEntry b) => a.l < b.l ? -1 : (a.l > b.l ? 1 : 0);
+fn int cmp_double(NumEntry a, NumEntry b) => a.d < b.d ? -1 : (a.d > b.d ? 1 : 0);
+fn int cmp_str(StrEntry a, StrEntry b) => str_less(a.key, b.key) ? -1 : (str_less(b.key, a.key) ? 1 : 0);
+
+struct ValueIndex
+{
+	bool valid;
+	NumEntry[] nums;
+	StrEntry[] strs;
+}
+
+fn void ValueIndex.release(&self, Allocator heap)
+{
+	if (self.nums.len > 0) alloc::free(heap, self.nums.ptr);
+	if (self.strs.len > 0) alloc::free(heap, self.strs.ptr);
+	self.nums = {};
+	self.strs = {};
+	self.valid = false;
+}
+
+// First position whose key is >= v (or > v when upper).
+fn usz num_bound(NumEntry[] a, PropertyValue v, bool upper)
+{
+	usz lo = 0;
+	usz hi = a.len;
+	while (lo < hi)
+	{
+		usz mid = lo + (hi - lo) / 2;
+		bool right;
+		if (v.type == DOUBLE)
+		{
+			double k = a[mid].d;
+			right = upper ? k <= v.value_double : k < v.value_double;
+		}
+		else
+		{
+			long k = a[mid].l;
+			long x = v.type == INTEGER ? (long)v.value_int : v.value_long;
+			right = upper ? k <= x : k < x;
+		}
+		if (right)
+		{
+			lo = mid + 1;
+		}
+		else
+		{
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
+fn usz str_bound(StrEntry[] a, String v, bool upper)
+{
+	usz lo = 0;
+	usz hi = a.len;
+	while (lo < hi)
+	{
+		usz mid = lo + (hi - lo) / 2;
+		bool right = upper ? !str_less(v, a[mid].key) : str_less(a[mid].key, v);
+		if (right)
+		{
+			lo = mid + 1;
+		}
+		else
+		{
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
 // ---- CantorDB ----
 
 const usz SET_BASE_COST = Set.sizeof + 64;
@@ -309,6 +407,7 @@ struct CantorDB
 	HashMap{uint, Set*} sets;                    // every set object, by id (including soft-deleted ones)
 	HashMap{uint, Set*} properties;              // property id -> set whose has_element = sets that have the property
 	HashMap{uint, PropType} property_types;      // property id -> type
+	HashMap{uint, ValueIndex*} value_index;      // property id -> sorted column (built on first WHERE)
 	ErrorCode ec;
 	String error_message;
 	DString error_buf;
@@ -328,6 +427,7 @@ fn CantorDB* CantorDB.init(&self, String name, usz memory_limit = 0, Allocator a
 	self.sets.init(allocator);
 	self.properties.init(allocator);
 	self.property_types.init(allocator);
+	self.value_index.init(allocator);
 	self.error_buf = dstring::new_with_capacity(allocator, 128);
 	self.create_set(UNIVERSAL_SET, true);
 	self.create_set(CACHE_SET, true);
@@ -348,7 +448,16 @@ fn void CantorDB.free(&self)
 		{
 			if (try s = self.properties.get(id)) s.destroy(self.allocator);
 		}
+		foreach (id : self.value_index.tkeys())
+		{
+			if (try vi = self.value_index.get(id))
+			{
+				vi.release(self.allocator);
+				alloc::free(self.allocator, vi);
+			}
+		}
 	};
+	self.value_index.free();
 	self.sets.free();
 	self.properties.free();
 	self.property_types.free();
@@ -520,13 +629,16 @@ fn bool CantorDB.delete_set(&self, String set_name, bool safe = true)
 		if (p) roaring_bitmap_remove(p.has_element, target.id);
 	}
 
-	// Unlink from all children's member_of
-	uint[] children = self.ids_of(target.has_element);
-	defer self.release_ids(children);
-	foreach (cid : children)
+	// Unlink from all children's member_of (nothing to undo for a computed result)
+	if (target.backlinked)
 	{
-		Set* c = self.set_by_id(cid);
-		if (c) roaring_bitmap_remove(c.member_of, target.id);
+		uint[] children = self.ids_of(target.has_element);
+		defer self.release_ids(children);
+		foreach (cid : children)
+		{
+			Set* c = self.set_by_id(cid);
+			if (c) roaring_bitmap_remove(c.member_of, target.id);
+		}
 	}
 
 	// Remove from property indices
@@ -551,6 +663,14 @@ fn bool CantorDB.delete_set(&self, String set_name, bool safe = true)
 	{
 		// Hard delete: destroy the set permanently
 		if (trash) roaring_bitmap_remove(trash.has_element, target.id);
+		// the index may hold views into this set's property strings
+		@pool()
+		{
+			foreach (key : target.properties.tkeys())
+			{
+				if (try pid = self.property_registry.get_id(key)) self.invalidate_index(pid);
+			}
+		};
 		uint id = target.id;
 		(void)self.sets.remove(id);
 		target.destroy(self.allocator);
@@ -615,6 +735,7 @@ fn bool CantorDB.restore_set(&self, String set_name)
 		Set* child = self.set_by_id(cid);
 		if (child) roaring_bitmap_add(child.member_of, target.id);
 	}
+	target.backlinked = true;
 
 	// Re-add to property indices
 	@pool()
@@ -640,9 +761,25 @@ fn bool CantorDB.add_member(&self, String set_name, String element_name)
 		self.fail(ER_ELEM_ALR_ADDED, string::tformat("Error: \"%s\" is already an element of \"%s\".", element_name, set_name));
 		return false;
 	}
+	self.backlink(parent);
 	roaring_bitmap_add(parent.has_element, child.id);
 	roaring_bitmap_add(child.member_of, parent.id);
 	return true;
+}
+
+// Computed results (set algebra, WHERE) skip writing their id into every element's member_of.
+// Before such a set is edited by hand, make its elements' member_of agree with has_element.
+fn void CantorDB.backlink(&self, Set* s)
+{
+	if (s.backlinked) return;
+	uint[] ids = self.ids_of(s.has_element);
+	defer self.release_ids(ids);
+	foreach (id : ids)
+	{
+		Set* c = self.set_by_id(id);
+		if (c) roaring_bitmap_add(c.member_of, s.id);
+	}
+	s.backlinked = true;
 }
 
 // Links an existing set object (e.g. a computed result) under set_name.
@@ -651,6 +788,7 @@ fn void CantorDB.add_member_set(&self, String set_name, Set* element)
 	if (self.emergency_shut_off) return;
 	Set* parent = self.find_set(set_name);
 	if (!parent) return;
+	self.backlink(parent);
 	roaring_bitmap_add(parent.has_element, element.id);
 	roaring_bitmap_add(element.member_of, parent.id);
 }
@@ -732,6 +870,7 @@ fn Set* CantorDB.combine(&self, Set* a, Set* b, SetOp op)
 	}
 	Set* result = self.make_cache_set(string::tformat("%s%s%s", a.set_name, sym, b.set_name));
 	if (!result) return null;
+	result.backlinked = false;
 
 	Bitmap* r;
 	switch (op)
@@ -960,6 +1099,14 @@ fn void CantorDB.attach_property(&self, Set* s, String property_name, PropertyVa
 	s.properties.set(key, stored);
 	Set* ps = self.properties.get(pid)!!;
 	roaring_bitmap_add(ps.has_element, s.id);
+	self.invalidate_index(pid);
+}
+
+// The property's values changed; its sorted column is rebuilt by the next WHERE.
+fn void CantorDB.invalidate_index(&self, uint pid)
+{
+	ValueIndex*? vi = self.value_index.get(pid);
+	if (try vi) vi.valid = false;
 }
 
 // Adds the property to the set with the type's default value.
@@ -1104,6 +1251,7 @@ fn bool CantorDB.delete_property(&self, String set_name, String key_name)
 	(void)s.properties.remove(key_name);
 	Set* ps = self.property_set(key_name);
 	if (ps) roaring_bitmap_remove(ps.has_element, s.id);
+	if (try pid = self.property_registry.get_id(key_name)) self.invalidate_index(pid);
 	return true;
 }
 
@@ -1127,6 +1275,7 @@ fn bool CantorDB.update_property(&self, String set_name, String key_name, Proper
 	{
 		*pv = value;
 	}
+	if (try pid = self.property_registry.get_id(key_name)) self.invalidate_index(pid);
 	return true;
 }
 
@@ -1283,6 +1432,112 @@ fn String CantorDB.list_cached_sets(&self)
 
 // ---- queries ----
 
+// Brings the property's sorted column up to date.
+fn ValueIndex* CantorDB.value_index_for(&self, uint pid, String property, Set* ps, PropType t)
+{
+	ValueIndex* vi;
+	ValueIndex*? found = self.value_index.get(pid);
+	if (try found)
+	{
+		vi = found;
+	}
+	else
+	{
+		vi = alloc::new(self.allocator, ValueIndex);
+		self.value_index.set(pid, vi);
+	}
+	if (vi.valid) return vi;
+	vi.release(self.allocator);
+
+	uint[] ids = self.ids_of(ps.has_element);
+	defer self.release_ids(ids);
+	if (ids.len == 0)
+	{
+		vi.valid = true;
+		return vi;
+	}
+	usz k = 0;
+	if (t == STRING)
+	{
+		StrEntry[] arr = alloc::new_array(self.allocator, StrEntry, ids.len);
+		foreach (id : ids)
+		{
+			Set* e = self.set_by_id(id);
+			if (!e) continue;
+			PropertyValue*? pv = e.properties.get_ref(property);
+			if (catch pv) continue;
+			arr[k++] = { .key = pv.value_string, .id = id };
+		}
+		if (k > 1) quicksort(arr[:k], &cmp_str);
+		vi.strs = arr[:k];
+	}
+	else
+	{
+		NumEntry[] arr = alloc::new_array(self.allocator, NumEntry, ids.len);
+		foreach (id : ids)
+		{
+			Set* e = self.set_by_id(id);
+			if (!e) continue;
+			PropertyValue*? pv = e.properties.get_ref(property);
+			if (catch pv) continue;
+			NumEntry entry;
+			entry.id = id;
+			switch (t)
+			{
+				case INTEGER: entry.l = (long)pv.value_int;
+				case LONG: entry.l = pv.value_long;
+				default: entry.d = pv.value_double;
+			}
+			arr[k++] = entry;
+		}
+		if (k > 1)
+		{
+			if (t == DOUBLE)
+			{
+				quicksort(arr[:k], &cmp_double);
+			}
+			else
+			{
+				quicksort(arr[:k], &cmp_long);
+			}
+		}
+		vi.nums = arr[:k];
+	}
+	vi.valid = true;
+	return vi;
+}
+
+// Ids whose stored value satisfies `op value`, from the sorted column. Null when the type has none.
+// Result may include sets that no longer have the property; the caller intersects.
+fn Bitmap* CantorDB.index_lookup(&self, String property, Set* ps, CmpOp op, PropertyValue value)
+{
+	if (value.type != INTEGER && value.type != LONG && value.type != DOUBLE && value.type != STRING) return null;
+	uint pid = self.property_registry.get_id(property)!!;
+	ValueIndex* vi = self.value_index_for(pid, property, ps, value.type);
+
+	usz n = value.type == STRING ? vi.strs.len : vi.nums.len;
+	usz lo;
+	usz hi;
+	switch (op)
+	{
+		case GREATER:
+			lo = value.type == STRING ? str_bound(vi.strs, value.value_string, true) : num_bound(vi.nums, value, true);
+			hi = n;
+		case LESSER:
+			lo = 0;
+			hi = value.type == STRING ? str_bound(vi.strs, value.value_string, false) : num_bound(vi.nums, value, false);
+		case EQUAL:
+			lo = value.type == STRING ? str_bound(vi.strs, value.value_string, false) : num_bound(vi.nums, value, false);
+			hi = value.type == STRING ? str_bound(vi.strs, value.value_string, true) : num_bound(vi.nums, value, true);
+	}
+	if (lo >= hi) return new_bitmap();
+
+	uint[] buf = alloc::new_array(self.allocator, uint, hi - lo);
+	defer alloc::free(self.allocator, buf.ptr);
+	for (usz i = lo; i < hi; i++) buf[i - lo] = value.type == STRING ? vi.strs[i].id : vi.nums[i].id;
+	return roaring_bitmap_of_ptr(hi - lo, buf.ptr);
+}
+
 // Elements of set_name whose property compares true against value. The type of value
 // picks the property type (int, long, double; string and bool support EQUAL only).
 fn Set* CantorDB.where_elements(&self, String set_name, String property, CmpOp op, PropertyValue value)
@@ -1315,6 +1570,19 @@ fn Set* CantorDB.where_elements(&self, String set_name, String property, CmpOp o
 	Set* result = self.make_cache_set(string::tformat("%s[%s %s %s]", set_name, property, sym, value_to_string(value)));
 	if (!result) return null;
 
+	result.backlinked = false;
+	Bitmap* hits = self.index_lookup(property, ps, op, value);
+	if (hits)
+	{
+		roaring_bitmap_and_inplace(hits, parent.has_element);
+		roaring_bitmap_and_inplace(hits, ps.has_element);   // drops sets that lost the property
+		roaring_bitmap_free(result.has_element);
+		result.has_element = hits;
+		self.add_member_set(CACHE_SET, result);
+		return result;
+	}
+
+	// No sorted column for this type (bool): scan the candidates.
 	Bitmap* candidates = roaring_bitmap_and(parent.has_element, ps.has_element);
 	uint[] ids = self.ids_of(candidates);
 	roaring_bitmap_free(candidates);

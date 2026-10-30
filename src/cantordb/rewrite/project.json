@@ -18,6 +18,14 @@
     "cantordb-smoke": {
       "type": "executable",
       "sources-override": [ "cantordb.c3", "roaring.c3", "tests/smoke.c3" ]
+    },
+    "cantordb-check": {
+      "type": "executable",
+      "sources-override": [ "cantordb.c3", "roaring.c3", "tests/check.c3" ]
+    },
+    "cantordb-bench": {
+      "type": "executable",
+      "sources-override": [ "cantordb.c3", "roaring.c3", "tests/bench.c3" ]
     }
   },
   "cpu": "generic",
